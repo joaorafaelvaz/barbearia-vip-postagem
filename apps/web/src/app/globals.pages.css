@@ -55,7 +55,7 @@ td.actions { text-align: right; white-space: nowrap; }
 .dropzone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); padding: var(--space-4); background: var(--surface-2); display: flex; align-items: center; gap: var(--space-3); cursor: pointer; transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease); }
 .dropzone:hover, .dropzone:focus-within { border-color: var(--accent); background: var(--accent-soft); }
 .dropzone input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.dropzone svg.icon { width: 28px; height: 28px; stroke-width: 1.5; color: var(--accent); }
+.dropzone svg.icon { width: 28px; height: 28px; stroke-width: 1.5; color: var(--accent-text); }
 .thumbs { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .thumb { position: relative; width: 96px; }
 .thumb img, .thumb video { width: 96px; height: 96px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); display: block; }

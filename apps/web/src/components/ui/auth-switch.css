@@ -1,6 +1,6 @@
 /* AuthSwitch: login/cadastro com painel deslizante. Cores vêm dos tokens globais. */
 .auth-switch { min-height: 100vh; width: 100%; display: flex; justify-content: center; align-items: center; padding: 20px;
-  background: linear-gradient(135deg, var(--accent) 0%, #5a2410 100%); }
+  background: linear-gradient(135deg, #15803d 0%, #052e16 100%); }
 .auth-switch .as-container { position: relative; width: 100%; max-width: 900px; height: 600px; background: var(--surface); color: var(--text);
   border-radius: 20px; box-shadow: 0 25px 50px rgba(0,0,0,.25); overflow: hidden; }
 .auth-switch .as-forms { position: absolute; inset: 0; }
@@ -39,7 +39,7 @@
 .auth-switch .as-panel p { font-size: .95rem; padding: .7rem 0; margin: 0; }
 .auth-switch .as-panel.right .content { transform: translateX(800px); }
 .auth-switch .as-container::before { content: ""; position: absolute; height: 2000px; width: 2000px; top: -10%; right: 48%;
-  transform: translateY(-50%); background: linear-gradient(-45deg, var(--accent) 0%, #5a2410 100%); transition: 1.8s ease-in-out; border-radius: 50%; z-index: 6; }
+  transform: translateY(-50%); background: linear-gradient(-45deg, #15803d 0%, #052e16 100%); transition: 1.8s ease-in-out; border-radius: 50%; z-index: 6; }
 .auth-switch .as-container.sign-up-mode::before { transform: translate(100%, -50%); right: 52%; }
 .auth-switch .as-container.sign-up-mode .as-panel.left .content { transform: translateX(-800px); }
 .auth-switch .as-container.sign-up-mode .as-stage { left: 25%; }

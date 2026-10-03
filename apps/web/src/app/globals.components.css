@@ -58,7 +58,7 @@ input[aria-invalid=true], textarea[aria-invalid=true] { border-color: var(--err)
 .badge.platform::before { display: none; }
 .chip { display: inline-flex; gap: 8px; align-items: center; min-height: var(--control-h-sm); border: 1px solid var(--border-strong); border-radius: 999px; padding: 4px 12px 4px 10px; font-size: var(--fs-sm); cursor: pointer; background: var(--surface); color: var(--text); font-weight: 500; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
 .chip:hover { background: var(--surface-2); }
-.chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hover); }
+.chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-text); }
 .chip input { margin: 0; width: 16px; height: 16px; accent-color: var(--accent); }
 .chip:has(input:focus-visible) { box-shadow: var(--ring); }
 
