@@ -10,4 +10,4 @@ export function optionalEnv(name: string): string | undefined {
   return v && v.length > 0 ? v : undefined;
 }
 
-export const appUrl = (): string => env("AUTH_URL", "http://localhost:3000");
+export const appUrl = (): string => env("AUTH_URL", "http://localhost:3022");

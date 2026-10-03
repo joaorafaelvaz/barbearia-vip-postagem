@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   const googleCfg = {
     clientId: process.env.GOOGLE_CLIENT_ID ?? "",
     clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-    redirectUri: `${process.env.AUTH_URL ?? "http://localhost:3000"}/api/oauth/google/callback`,
+    redirectUri: `${process.env.AUTH_URL ?? "http://localhost:3022"}/api/oauth/google/callback`,
   };
 
   const deps: ProcessorDeps = {

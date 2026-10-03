@@ -36,7 +36,7 @@ cp .env.example .env            # preencha APP_ENCRYPTION_KEY e AUTH_SECRET (aba
 docker compose up -d            # Postgres + Redis
 pnpm db:migrate                 # cria as tabelas
 pnpm --filter @fsp/db seed      # (opcional) rede de exemplo com contas falsas
-pnpm dev                        # web em http://localhost:3000 + worker
+pnpm dev                        # web em http://localhost:3022 + worker
 ```
 
 Gerar segredos:
@@ -62,7 +62,7 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
 
 1. Crie um app em <https://developers.facebook.com/apps> do tipo **Business**.
 2. Adicione o produto **Facebook Login for Business** e configure a URL de redirecionamento
-   `https://SEU-DOMINIO/api/oauth/meta/callback` (em dev: `http://localhost:3000/api/oauth/meta/callback`).
+   `https://SEU-DOMINIO/api/oauth/meta/callback` (em dev: `http://localhost:3022/api/oauth/meta/callback`).
 3. Copie `App ID` e `App Secret` para `META_APP_ID` e `META_APP_SECRET`.
 4. Em **App Review**, solicite as permissões `pages_show_list`, `pages_read_engagement`,
    `pages_manage_posts`, `publish_video`, `instagram_basic`, `instagram_content_publish`, `business_management`.
@@ -94,11 +94,45 @@ decodifica vídeo. Limite de upload: 10MB por imagem, 300MB por vídeo.
 Em desenvolvimento as mídias ficam em `apps/web/public/uploads`. Em produção configure um
 bucket S3 compatível (`S3_*` no `.env`), pois as plataformas baixam a imagem de uma URL pública.
 
-## Deploy
+## Deploy (postagem.barbearia.vip)
 
-`apps/web/Dockerfile` e `apps/worker/Dockerfile` geram imagens independentes. Ambas precisam
-das mesmas variáveis de ambiente (`DATABASE_URL`, `REDIS_URL`, `APP_ENCRYPTION_KEY`, `AUTH_*`,
-`META_*`, `GOOGLE_*`, `S3_*`). Rode `pnpm db:deploy` antes de subir a versão nova.
+Produção roda em Docker Compose (`docker-compose.prod.yml`: web na porta 3022 só em
+127.0.0.1, worker, Postgres e Redis) com o Nginx do host como proxy reverso e HTTPS do
+Let's Encrypt. Os arquivos estão em `deploy/`.
+
+### Primeira instalação (servidor Ubuntu/Debian limpo)
+
+1. Aponte o registro A de `postagem.barbearia.vip` para o IP do servidor (já feito).
+2. No servidor, como root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SEU-USUARIO/SEU-REPO/main/deploy/setup-server.sh -o setup-server.sh
+sudo bash setup-server.sh https://github.com/SEU-USUARIO/SEU-REPO.git seu-email@dominio.com
+```
+
+   O script instala Docker, Nginx e certbot, clona o repositório em `/opt/postagem`, cria
+   `.env.production` com segredos gerados, emite o certificado, aplica o Nginx de
+   `deploy/nginx/postagem.barbearia.vip.conf` e sobe a aplicação (`deploy/deploy.sh`).
+3. Preencha `META_APP_ID`, `META_APP_SECRET`, `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`
+   em `/opt/postagem/.env.production` e rode `bash deploy/deploy.sh` de novo.
+4. Nos apps da Meta e do Google, cadastre os redirects
+   `https://postagem.barbearia.vip/api/oauth/meta/callback` e
+   `https://postagem.barbearia.vip/api/oauth/google/callback`.
+
+### Atualizações
+
+```bash
+cd /opt/postagem && bash deploy/deploy.sh
+```
+
+Faz `git pull`, reconstrói as imagens, aplica as migrations (serviço `migrate`) e reinicia
+web e worker. Logs: `docker compose -f docker-compose.prod.yml logs -f web worker`.
+
+### Mídia em produção
+
+Sem S3 configurado, as mídias ficam em `/opt/postagem/data/uploads` (volume do compose) e o
+Nginx as serve em `/uploads/`. Isso é obrigatório porque Meta e Google baixam a mídia por URL
+pública. Para usar S3/R2, preencha as variáveis `S3_*`. O limite de upload no Nginx é 320MB.
 
 ## Usuários e permissões
 

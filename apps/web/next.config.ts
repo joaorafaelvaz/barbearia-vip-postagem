@@ -7,6 +7,7 @@ loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  outputFileTracingRoot: path.resolve(process.cwd(), "../../"),
   transpilePackages: ["@fsp/core", "@fsp/connectors", "@fsp/db", "@fsp/queue"],
   serverExternalPackages: ["@prisma/client", "bullmq", "ioredis", "@aws-sdk/client-s3"],
   experimental: {

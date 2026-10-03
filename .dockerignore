@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+.git
+.env
+.env.*
+!.env.example
+apps/web/public/uploads
+apps/web/test-results
+apps/web/playwright-report
+data
+*.stackdump
