@@ -1,12 +1,13 @@
 import type { Platform } from "@fsp/core";
 import { PostComposer } from "@/components/PostComposer";
+import { allowedUnitIds } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { listUnitsWithAccounts } from "@/lib/services/accounts";
 import { requireSession } from "@/lib/session";
 
 export default async function NewPostPage() {
   const s = await requireSession();
-  const units = await listUnitsWithAccounts(prisma, s.organizationId);
+  const units = await listUnitsWithAccounts(prisma, s.organizationId, await allowedUnitIds(prisma, s));
   return (
     <div className="stack lg">
       <div className="page-head">

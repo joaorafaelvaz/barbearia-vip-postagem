@@ -2,6 +2,7 @@ import { isValidTimeZone } from "@fsp/core";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError, route } from "@/lib/api";
+import { allowedUnitIds, requireAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { listUnitsWithAccounts } from "@/lib/services/accounts";
 import { requireSession } from "@/lib/session";
@@ -14,11 +15,12 @@ const unitSchema = z.object({
 
 export const GET = route(async () => {
   const s = await requireSession();
-  return NextResponse.json({ units: await listUnitsWithAccounts(prisma, s.organizationId) });
+  return NextResponse.json({ units: await listUnitsWithAccounts(prisma, s.organizationId, await allowedUnitIds(prisma, s)) });
 });
 
 export const POST = route(async (req: Request) => {
   const s = await requireSession();
+  requireAdmin(s);
   const input = unitSchema.parse(await req.json());
   if (!isValidTimeZone(input.timezone)) throw new HttpError(400, "Fuso horário inválido.");
   const unit = await prisma.unit.create({

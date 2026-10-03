@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { route } from "@/lib/api";
+import { allowedUnitIds, unitFilter } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { getQueue } from "@/lib/queue";
 import { createPost } from "@/lib/services/posts";
@@ -10,9 +11,11 @@ export const GET = route(async (req: Request) => {
   const url = new URL(req.url);
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
+  const allowed = await allowedUnitIds(prisma, s);
   const targets = await prisma.postTarget.findMany({
     where: {
       organizationId: s.organizationId,
+      ...(allowed ? { account: unitFilter(allowed) } : {}),
       ...(from || to
         ? { scheduledAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } }
         : {}),
@@ -29,6 +32,6 @@ export const GET = route(async (req: Request) => {
 
 export const POST = route(async (req: Request) => {
   const s = await requireSession();
-  const post = await createPost({ prisma, queue: getQueue() }, s.organizationId, s.userId, await req.json());
+  const post = await createPost({ prisma, queue: getQueue() }, s.organizationId, s.userId, await req.json(), await allowedUnitIds(prisma, s));
   return NextResponse.json({ post }, { status: 201 });
 });

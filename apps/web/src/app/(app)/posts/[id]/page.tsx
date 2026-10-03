@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PlatformBadge, StatusBadge } from "@/components/Badges";
 import { IconChevronLeft, IconLink } from "@/components/Icons";
 import { TargetActions } from "@/components/TargetActions";
+import { allowedUnitIds } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { formatInTz, formatLocal } from "@/lib/format";
 import { requireSession } from "@/lib/session";
@@ -10,11 +11,13 @@ import { requireSession } from "@/lib/session";
 export default async function PostDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const s = await requireSession();
   const { id } = await params;
+  const allowed = await allowedUnitIds(prisma, s);
+  const targetsWhere = allowed ? { account: { unitId: { in: allowed } } } : {};
   const post = await prisma.post.findFirst({
-    where: { id, organizationId: s.organizationId },
+    where: { id, organizationId: s.organizationId, ...(allowed ? { targets: { some: targetsWhere } } : {}) },
     include: {
       media: { include: { media: true }, orderBy: { position: "asc" } },
-      targets: { include: { account: { include: { unit: true } } }, orderBy: { scheduledAt: "asc" } },
+      targets: { where: targetsWhere, include: { account: { include: { unit: true } } }, orderBy: { scheduledAt: "asc" } },
     },
   });
   if (!post) notFound();

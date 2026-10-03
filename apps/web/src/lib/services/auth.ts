@@ -38,5 +38,6 @@ export async function login(prisma: PrismaClient, raw: unknown): Promise<Session
   const user = await prisma.user.findUnique({ where: { email: input.email } });
   const ok = user?.passwordHash ? await bcrypt.compare(input.password, user.passwordHash) : false;
   if (!user || !ok) throw new HttpError(401, "E-mail ou senha inválidos.");
+  if (!user.isActive) throw new HttpError(403, "Este usuário foi desativado. Fale com o administrador da rede.");
   return { userId: user.id, organizationId: user.organizationId, email: user.email, name: user.name, role: user.role };
 }

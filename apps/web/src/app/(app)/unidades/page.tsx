@@ -3,6 +3,7 @@ import { PlatformBadge } from "@/components/Badges";
 import { DisconnectButton } from "@/components/DisconnectButton";
 import { IconAlert, IconCheck, IconFacebook, IconMapPin, IconStore } from "@/components/Icons";
 import { UnitForm } from "@/components/UnitForm";
+import { allowedUnitIds, isAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { listUnitsWithAccounts } from "@/lib/services/accounts";
 import { requireSession } from "@/lib/session";
@@ -16,7 +17,8 @@ const ERRORS: Record<string, string> = {
 export default async function UnitsPage({ searchParams }: { searchParams: Promise<{ erro?: string; ok?: string }> }) {
   const s = await requireSession();
   const sp = await searchParams;
-  const units = await listUnitsWithAccounts(prisma, s.organizationId);
+  const admin = isAdmin(s);
+  const units = await listUnitsWithAccounts(prisma, s.organizationId, await allowedUnitIds(prisma, s));
   const hasMeta = Boolean(process.env.META_APP_ID);
   const hasGoogle = Boolean(process.env.GOOGLE_CLIENT_ID);
 
@@ -37,10 +39,10 @@ export default async function UnitsPage({ searchParams }: { searchParams: Promis
         </span></div>
       )}
 
-      <UnitForm />
+      {admin ? <UnitForm /> : <div className="alert info"><IconAlert size="sm" /><span>Você vê as unidades delegadas a você. Só o administrador cadastra unidades.</span></div>}
 
       {units.length === 0 ? (
-        <div className="card"><div className="empty"><IconStore /><strong>Nenhuma unidade ainda</strong><span>Cadastre a primeira unidade no formulário acima.</span></div></div>
+        <div className="card"><div className="empty"><IconStore /><strong>{admin ? "Nenhuma unidade ainda" : "Nenhuma unidade delegada a você"}</strong><span>{admin ? "Cadastre a primeira unidade no formulário acima." : "Peça ao administrador para delegar unidades ao seu usuário."}</span></div></div>
       ) : (
         <div className="grid cols-2">
           {units.map((u) => (

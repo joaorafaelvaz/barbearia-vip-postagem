@@ -55,14 +55,15 @@ export async function createPost(
   organizationId: string,
   userId: string,
   raw: unknown,
+  allowedUnitIds: string[] | null = null,
 ) {
   const input = createPostSchema.parse(raw);
   const accounts = await deps.prisma.connectedAccount.findMany({
-    where: { id: { in: input.accountIds }, organizationId },
+    where: { id: { in: input.accountIds }, organizationId, ...(allowedUnitIds ? { unitId: { in: allowedUnitIds } } : {}) },
     select: { id: true, platform: true, isActive: true, unit: { select: { id: true, name: true, timezone: true } } },
   });
   if (accounts.length !== input.accountIds.length) {
-    throw new HttpError(400, "Uma ou mais contas selecionadas não pertencem à sua organização.");
+    throw new HttpError(403, "Uma ou mais contas selecionadas não pertencem às suas unidades.");
   }
   const inactive = accounts.filter((a) => !a.isActive);
   if (inactive.length > 0) throw new HttpError(400, "Há contas desconectadas entre as selecionadas.");
@@ -97,16 +98,20 @@ export async function createPost(
   return post;
 }
 
-export async function retryTarget(deps: { prisma: PrismaClient; queue: PublishQueueLike }, organizationId: string, targetId: string) {
-  const target = await deps.prisma.postTarget.findFirst({ where: { id: targetId, organizationId } });
+function targetWhere(organizationId: string, targetId: string, allowed: string[] | null) {
+  return { id: targetId, organizationId, ...(allowed ? { account: { unitId: { in: allowed } } } : {}) };
+}
+
+export async function retryTarget(deps: { prisma: PrismaClient; queue: PublishQueueLike }, organizationId: string, targetId: string, allowed: string[] | null = null) {
+  const target = await deps.prisma.postTarget.findFirst({ where: targetWhere(organizationId, targetId, allowed) });
   if (!target) throw new HttpError(404, "Publicação não encontrada.");
   if (target.status === "PUBLISHED") throw new HttpError(409, "Já publicado.");
   await deps.prisma.postTarget.update({ where: { id: targetId }, data: { status: "SCHEDULED", lastError: null } });
   await requeuePublish(deps.queue, targetId, new Date());
 }
 
-export async function cancelTarget(deps: { prisma: PrismaClient; queue: PublishQueueLike }, organizationId: string, targetId: string) {
-  const target = await deps.prisma.postTarget.findFirst({ where: { id: targetId, organizationId } });
+export async function cancelTarget(deps: { prisma: PrismaClient; queue: PublishQueueLike }, organizationId: string, targetId: string, allowed: string[] | null = null) {
+  const target = await deps.prisma.postTarget.findFirst({ where: targetWhere(organizationId, targetId, allowed) });
   if (!target) throw new HttpError(404, "Publicação não encontrada.");
   if (target.status !== "SCHEDULED" && target.status !== "FAILED") {
     throw new HttpError(409, `Não é possível cancelar com status ${target.status}.`);

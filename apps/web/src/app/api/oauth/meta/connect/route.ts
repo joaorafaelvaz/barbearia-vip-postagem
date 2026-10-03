@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError, route } from "@/lib/api";
+import { assertUnitAllowed } from "@/lib/authz";
 import { getCipher } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { META_PENDING_COOKIE } from "@/lib/oauth-meta";
@@ -15,6 +16,7 @@ const schema = z.object({ unitId: z.string().min(1), pageIds: z.array(z.string()
 export const POST = route(async (req: Request) => {
   const s = await requireSession();
   const input = schema.parse(await req.json());
+  await assertUnitAllowed(prisma, s, input.unitId);
   const pending = (await cookies()).get(META_PENDING_COOKIE)?.value;
   if (!pending) throw new HttpError(400, "Sessão de conexão expirada. Conecte novamente.");
   const userToken = getCipher().decrypt(pending);

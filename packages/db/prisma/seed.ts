@@ -1,7 +1,8 @@
 /**
  * Seed de desenvolvimento: cria uma rede com 3 unidades e contas FALSAS
  * (tokens cifrados sem valor real) para navegar na UI sem OAuth.
- * Login: dono@rede.local / senha12345
+ * Logins: dono@rede.local / senha12345 (administrador)
+ *         gestor@rede.local / senha12345 (gestor, só Unidade Manaus)
  */
 import { TokenCipher } from "@fsp/core";
 import bcrypt from "bcryptjs";
@@ -14,7 +15,8 @@ async function main() {
   const email = "dono@rede.local";
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    console.log("Seed já aplicado. Nada a fazer.");
+    await ensureManager(existing.organizationId);
+    console.log("Seed já aplicado; gestor conferido.");
     return;
   }
   const org = await prisma.organization.create({
@@ -38,7 +40,22 @@ async function main() {
       ],
     });
   }
-  console.log(`Seed ok. Login: ${email} / senha12345`);
+  await ensureManager(org.id);
+  console.log(`Seed ok. Logins: ${email} / senha12345 (admin) e gestor@rede.local / senha12345 (gestor)`);
+}
+
+/** Gestor de exemplo com acesso só à Unidade Manaus (idempotente). */
+async function ensureManager(organizationId: string) {
+  const email = "gestor@rede.local";
+  if (await prisma.user.findUnique({ where: { email } })) return;
+  const manaus = await prisma.unit.findFirst({ where: { organizationId, name: "Unidade Manaus" } });
+  await prisma.user.create({
+    data: {
+      organizationId, email, name: "Gestor Manaus", role: "MANAGER",
+      passwordHash: await bcrypt.hash("senha12345", 10),
+      units: manaus ? { create: [{ unitId: manaus.id }] } : undefined,
+    },
+  });
 }
 
 main()

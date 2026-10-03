@@ -4,6 +4,7 @@ import { DashboardCalendar } from "@/components/DashboardCalendar";
 import { IconAlert, IconCalendar, IconCheck, IconChevronLeft, IconChevronRight, IconClock, IconPlus } from "@/components/Icons";
 import { TargetActions } from "@/components/TargetActions";
 import { monthRange, shiftMonth } from "@/lib/dashboard";
+import { allowedUnitIds } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { STATUS_LABELS, formatInTz, shorten } from "@/lib/format";
 import { requireSession } from "@/lib/session";
@@ -15,9 +16,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const s = await requireSession();
   const sp = await searchParams;
   const range = monthRange(sp.mes);
-  const accountFilter = { ...(sp.unidade ? { unitId: sp.unidade } : {}), ...(sp.plataforma ? { platform: sp.plataforma as never } : {}) };
+  const allowed = await allowedUnitIds(prisma, s);
+  const accountFilter = {
+    ...(sp.unidade ? { unitId: sp.unidade } : allowed ? { unitId: { in: allowed } } : {}),
+    ...(sp.plataforma ? { platform: sp.plataforma as never } : {}),
+  };
   const [units, targets] = await Promise.all([
-    prisma.unit.findMany({ where: { organizationId: s.organizationId }, orderBy: { name: "asc" } }),
+    prisma.unit.findMany({ where: { organizationId: s.organizationId, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { name: "asc" } }),
     prisma.postTarget.findMany({
       where: {
         organizationId: s.organizationId,

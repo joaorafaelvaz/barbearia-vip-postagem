@@ -77,15 +77,18 @@ export async function connectGoogleLocations(
   }
 }
 
-export async function disconnectAccount(prisma: PrismaClient, organizationId: string, accountId: string) {
-  const r = await prisma.connectedAccount.updateMany({ where: { id: accountId, organizationId }, data: { isActive: false } });
+export async function disconnectAccount(prisma: PrismaClient, organizationId: string, accountId: string, allowedUnitIds: string[] | null = null) {
+  const r = await prisma.connectedAccount.updateMany({
+    where: { id: accountId, organizationId, ...(allowedUnitIds ? { unitId: { in: allowedUnitIds } } : {}) },
+    data: { isActive: false },
+  });
   if (r.count === 0) throw new HttpError(404, "Conta não encontrada.");
 }
 
-/** Unidades com suas contas ativas, para a tela de composição e a de unidades. */
-export async function listUnitsWithAccounts(prisma: PrismaClient, organizationId: string) {
+/** Unidades com suas contas ativas. `allowedUnitIds` null = todas (administrador). */
+export async function listUnitsWithAccounts(prisma: PrismaClient, organizationId: string, allowedUnitIds: string[] | null = null) {
   return prisma.unit.findMany({
-    where: { organizationId },
+    where: { organizationId, ...(allowedUnitIds ? { id: { in: allowedUnitIds } } : {}) },
     orderBy: { name: "asc" },
     include: {
       accounts: {

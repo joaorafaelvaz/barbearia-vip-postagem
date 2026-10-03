@@ -46,7 +46,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # 
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"      # AUTH_SECRET
 ```
 
-Login do seed: `dono@rede.local` / `senha12345`. As contas do seed são falsas: a
+Logins do seed: `dono@rede.local` / `senha12345` (administrador) e `gestor@rede.local` / `senha12345` (gestor com acesso só à Unidade Manaus). As contas do seed são falsas: a
 publicação real exige conectar contas de verdade via OAuth.
 
 ## Testes
@@ -99,6 +99,15 @@ bucket S3 compatível (`S3_*` no `.env`), pois as plataformas baixam a imagem de
 `apps/web/Dockerfile` e `apps/worker/Dockerfile` geram imagens independentes. Ambas precisam
 das mesmas variáveis de ambiente (`DATABASE_URL`, `REDIS_URL`, `APP_ENCRYPTION_KEY`, `AUTH_*`,
 `META_*`, `GOOGLE_*`, `S3_*`). Rode `pnpm db:deploy` antes de subir a versão nova.
+
+## Usuários e permissões
+
+- **Administrador**: vê todas as unidades, cadastra unidades, conecta contas, cria usuários e
+  delega unidades a cada gestor em **Usuários**. Pode desativar usuários e promover gestores.
+- **Gestor**: só vê e publica nas unidades delegadas. Não cadastra unidades nem acessa a
+  gestão de usuários. A API devolve 403 fora desse escopo.
+- Cada usuário troca a própria senha em **Minha conta**. Usuários são criados pelo
+  administrador com uma senha inicial (não há envio de e-mail).
 
 ## Interface
 

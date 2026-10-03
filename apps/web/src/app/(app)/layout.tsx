@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { IconDashboard, IconLogout, IconMegaphone, IconPlus, IconStore } from "@/components/Icons";
+import { IconDashboard, IconLogout, IconMegaphone, IconPlus, IconStore, IconUser, IconUsers } from "@/components/Icons";
 import { NavLink } from "@/components/NavLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ROLE_LABELS, isAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
 
@@ -22,11 +23,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <NavLink href="/" icon={<IconDashboard />}>Painel</NavLink>
           <NavLink href="/novo" icon={<IconPlus />}>Nova postagem</NavLink>
           <NavLink href="/unidades" icon={<IconStore />}>Unidades e contas</NavLink>
+          {session && isAdmin(session) && <NavLink href="/usuarios" icon={<IconUsers />}>Usuários</NavLink>}
+          <NavLink href="/conta" icon={<IconUser />}>Minha conta</NavLink>
         </nav>
         <div className="spacer" />
         <div className="user">
           <strong>{org?.name ?? "Minha rede"}</strong>
-          <span>{session?.email}</span>
+          <span>{session?.email}{session ? " · " + ROLE_LABELS[session.role] : ""}</span>
         </div>
         <form action="/api/auth/logout" method="post">
           <button className="btn small" type="submit" style={{ width: "100%" }}>
