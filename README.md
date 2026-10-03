@@ -106,8 +106,8 @@ Let's Encrypt. Os arquivos estão em `deploy/`.
 2. No servidor, como root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SEU-USUARIO/SEU-REPO/main/deploy/setup-server.sh -o setup-server.sh
-sudo bash setup-server.sh https://github.com/SEU-USUARIO/SEU-REPO.git seu-email@dominio.com
+curl -fsSL https://raw.githubusercontent.com/joaorafaelvaz/barbearia-vip-postagem/main/deploy/setup-server.sh -o setup-server.sh
+sudo bash setup-server.sh https://github.com/joaorafaelvaz/barbearia-vip-postagem.git seu-email@dominio.com
 ```
 
    O script instala Docker, Nginx e certbot, clona o repositório em `/opt/postagem`, cria
