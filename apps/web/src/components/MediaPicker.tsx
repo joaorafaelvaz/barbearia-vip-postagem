@@ -1,6 +1,8 @@
 "use client";
 
 import type { Platform } from "@fsp/core/platforms";
+import { useId } from "react";
+import { IconUpload, IconVideo, IconX } from "./Icons";
 
 export interface Uploaded {
   id: string;
@@ -40,6 +42,8 @@ interface Props {
 }
 
 export function MediaPicker({ media, uploading, onUploadingChange, onAdd, onRemove, onError }: Props) {
+  const inputId = useId();
+
   async function onFiles(files: FileList | null) {
     if (!files) return;
     onUploadingChange(true);
@@ -64,29 +68,27 @@ export function MediaPicker({ media, uploading, onUploadingChange, onAdd, onRemo
     onUploadingChange(false);
   }
 
-  const thumb = { width: 84, height: 84, objectFit: "cover" as const, borderRadius: 8, border: "1px solid var(--border)" };
-
   return (
-    <div>
-      <label htmlFor="media">Imagens ou vídeo</label>
-      <input id="media" type="file" accept={ACCEPT} multiple onChange={(e) => onFiles(e.target.files)} disabled={uploading} />
-      <small>
-        Imagens JPG/PNG (Instagram exige JPG). Vídeo MP4/MOV: um por postagem, publicado como Reels no Instagram e como vídeo na Page do Facebook.
-        O Google Meu Negócio não aceita vídeo em postagens.
-      </small>
-      {uploading && <small style={{ display: "block" }}>Enviando...</small>}
+    <div className="field">
+      <label htmlFor={inputId}>Imagens ou vídeo</label>
+      <label className="dropzone" htmlFor={inputId} style={{ position: "relative", fontWeight: 400, marginBottom: 0 }}>
+        <input id={inputId} type="file" accept={ACCEPT} multiple onChange={(e) => onFiles(e.target.files)} disabled={uploading} />
+        {uploading ? <span className="spinner" aria-hidden="true" style={{ width: 24, height: 24, border: "2px solid var(--accent)", borderRightColor: "transparent", borderRadius: "50%", animation: "spin .8s linear infinite" }} /> : <IconUpload />}
+        <span>
+          <strong style={{ display: "block", color: "var(--text)" }}>{uploading ? "Enviando..." : "Clique para escolher arquivos"}</strong>
+          <small>JPG, PNG ou GIF para imagens (o Instagram só aceita JPG). MP4 ou MOV para vídeo: um por postagem, sem misturar com imagens. O Google Meu Negócio não aceita vídeo.</small>
+        </span>
+      </label>
       {media.length > 0 && (
-        <div className="thumbs" style={{ marginTop: 8 }}>
-          {media.map((m) => (
-            <div key={m.id} style={{ position: "relative" }}>
-              {m.kind === "VIDEO" ? <video src={m.publicUrl} muted playsInline style={thumb} /> : <img src={m.publicUrl} alt="" />}
-              <button type="button" className="btn small" style={{ position: "absolute", top: 2, right: 2, padding: "0 6px" }} onClick={() => onRemove(m.id)} aria-label="Remover mídia">
-                ×
-              </button>
-              {m.kind === "VIDEO" && m.durationSec !== null && <small style={{ display: "block", textAlign: "center" }}>{m.durationSec}s</small>}
-            </div>
+        <ul className="thumbs" style={{ listStyle: "none", padding: 0, margin: "var(--space-3) 0 0" }} aria-label="Mídias anexadas">
+          {media.map((m, i) => (
+            <li key={m.id} className="thumb">
+              {m.kind === "VIDEO" ? <video src={m.publicUrl} muted playsInline /> : <img src={m.publicUrl} alt={`Mídia ${i + 1}`} />}
+              {m.kind === "VIDEO" && <span className="meta"><IconVideo size="sm" style={{ width: 12, height: 12 }} />{m.durationSec !== null ? `${m.durationSec}s` : "vídeo"}</span>}
+              <button type="button" className="btn remove" onClick={() => onRemove(m.id)} aria-label={`Remover mídia ${i + 1}`}><IconX size="sm" /></button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

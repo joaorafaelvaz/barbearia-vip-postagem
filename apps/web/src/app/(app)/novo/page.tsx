@@ -8,9 +8,13 @@ export default async function NewPostPage() {
   const s = await requireSession();
   const units = await listUnitsWithAccounts(prisma, s.organizationId);
   return (
-    <div className="stack">
-      <h1>Nova postagem</h1>
-      <p className="muted">Uma postagem, várias unidades. Escolha o texto, as imagens, o horário e em quais contas publicar.</p>
+    <div className="stack lg">
+      <div className="page-head">
+        <div>
+          <h1>Nova postagem</h1>
+          <p className="lead">Uma postagem, várias unidades. Monte o conteúdo, escolha o horário e marque em quais contas publicar.</p>
+        </div>
+      </div>
       <PostComposer
         units={units.map((u) => ({
           id: u.id,

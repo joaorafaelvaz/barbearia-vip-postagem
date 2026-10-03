@@ -31,9 +31,9 @@ test.describe("fluxo principal", () => {
     await page.fill("#when", local);
     await page.click("button:has-text('Selecionar todas')");
 
-    // Instagram exige imagem: sem upload, a API deve recusar
-    await page.click("button:has-text('Agendar em')");
-    await expect(page.locator(".alert.error")).toContainText("exige pelo menos uma imagem");
+    // Instagram exige imagem: sem upload, a UI bloqueia o botão e explica o motivo
+    await expect(page.locator("button:has-text('Agendar em')")).toBeDisabled();
+    await expect(page.locator(".action-bar .why")).toContainText("Instagram exige");
 
     // desmarca o Instagram e agenda nas outras duas
     await page.click("label.chip:has-text('Instagram')");

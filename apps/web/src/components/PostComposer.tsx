@@ -5,14 +5,22 @@ import { CAPTION_LIMITS, PLATFORM_LABELS, type Platform } from "@fsp/core/platfo
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AccountSelector, type ComposerUnit } from "./AccountSelector";
+import { IconAlert, IconCheck, IconInfo } from "./Icons";
 import { MediaPicker, type Uploaded } from "./MediaPicker";
 
 export type { ComposerUnit } from "./AccountSelector";
+
+function minLocal(): string {
+  const d = new Date(Date.now() + 5 * 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export function PostComposer({ units }: { units: ComposerUnit[] }) {
   const router = useRouter();
   const [caption, setCaption] = useState("");
   const [when, setWhen] = useState("");
+  const [whenTouched, setWhenTouched] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [media, setMedia] = useState<Uploaded[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -25,10 +33,24 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
     return [...set];
   }, [units, selected]);
   const captionLen = [...caption].length;
+  const overLimit = selectedPlatforms.filter((p) => captionLen > CAPTION_LIMITS[p]);
   const mediaIssues = media.flatMap((m) => m.issues.filter((i) => selectedPlatforms.includes(i.platform)));
   const setIssues = validateMediaSet(media.map((m) => m.kind as MediaKind), selectedPlatforms);
   const warnings = [...new Set([...setIssues, ...mediaIssues].map((i) => i.message))];
-  const blocked = setIssues.length > 0;
+  const needsMedia = selectedPlatforms.includes("INSTAGRAM") && media.length === 0;
+  const whenInPast = when !== "" && new Date(when).getTime() < Date.now();
+  const whenError = whenTouched && (when === "" ? "Escolha a data e a hora." : whenInPast ? "Esse horário já passou." : null);
+
+  const blocker =
+    selected.size === 0 ? "Selecione pelo menos uma conta."
+    : !when ? "Escolha a data e a hora."
+    : whenInPast ? "O horário escolhido já passou."
+    : needsMedia ? "O Instagram exige uma imagem ou vídeo."
+    : setIssues.length > 0 ? "Ajuste as mídias ou as contas selecionadas."
+    : overLimit.length > 0 ? `Texto acima do limite do ${overLimit.map((p) => PLATFORM_LABELS[p]).join(", ")}.`
+    : caption.trim() === "" && media.length === 0 ? "Escreva um texto ou anexe uma mídia."
+    : uploading ? "Aguarde o envio das mídias."
+    : null;
 
   async function submit() {
     setBusy(true);
@@ -49,45 +71,62 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
   }
 
   return (
-    <div className="grid cols-2">
-      <div className="card stack">
-        <div>
-          <label htmlFor="caption">Texto da postagem</label>
-          <textarea id="caption" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escreva a legenda que será publicada em todas as contas selecionadas" />
-          <small>
-            {captionLen} caracteres
-            {selectedPlatforms.map((p) => (
-              <span key={p} style={{ marginLeft: 10, color: captionLen > CAPTION_LIMITS[p] ? "var(--err)" : undefined }}>
-                {PLATFORM_LABELS[p]}: máx. {CAPTION_LIMITS[p]}
-              </span>
-            ))}
-          </small>
-        </div>
+    <div className="grid composer">
+      <div className="card stack lg">
+        <section className="section">
+          <h2 className="section-title"><span className="num">1</span> Conteúdo</h2>
+          <div className="field">
+            <label htmlFor="caption">Texto da postagem</label>
+            <textarea id="caption" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escreva a legenda que será publicada em todas as contas selecionadas" aria-describedby="caption-hint" aria-invalid={overLimit.length > 0 || undefined} />
+            <small id="caption-hint" className="hint">
+              {captionLen} caracteres
+              {selectedPlatforms.map((p) => (
+                <span key={p} style={{ marginLeft: 10, color: captionLen > CAPTION_LIMITS[p] ? "var(--err)" : undefined }}>
+                  {PLATFORM_LABELS[p]}: máx. {CAPTION_LIMITS[p].toLocaleString("pt-BR")}
+                </span>
+              ))}
+            </small>
+          </div>
+          <MediaPicker
+            media={media}
+            uploading={uploading}
+            onUploadingChange={setUploading}
+            onAdd={(m) => setMedia((list) => [...list, m])}
+            onRemove={(id) => setMedia((list) => list.filter((x) => x.id !== id))}
+            onError={setError}
+          />
+          {warnings.length > 0 && (
+            <div className={`alert ${setIssues.length > 0 ? "error" : "warn"}`} role="status">
+              <IconAlert size="sm" /><span>{warnings.join(" ")}</span>
+            </div>
+          )}
+        </section>
 
-        <MediaPicker
-          media={media}
-          uploading={uploading}
-          onUploadingChange={setUploading}
-          onAdd={(m) => setMedia((list) => [...list, m])}
-          onRemove={(id) => setMedia((list) => list.filter((x) => x.id !== id))}
-          onError={setError}
-        />
-        {warnings.length > 0 && <div className={`alert ${blocked ? "error" : "warn"}`}>{warnings.join(" ")}</div>}
+        <hr className="divider" />
 
-        <div>
-          <label htmlFor="when">Data e hora (no horário local de cada unidade)</label>
-          <input id="when" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} required />
-          <small>Unidades em fusos diferentes publicam no mesmo horário local, cada uma no seu fuso.</small>
-        </div>
-        {error && <div className="alert error" role="alert">{error}</div>}
-        <div>
-          <button className="btn primary" disabled={busy || uploading || blocked || !when || selected.size === 0} onClick={submit}>
-            {busy ? "Agendando..." : `Agendar em ${selected.size} conta${selected.size === 1 ? "" : "s"}`}
+        <section className="section">
+          <h2 className="section-title"><span className="num">2</span> Quando publicar</h2>
+          <div className="field">
+            <label htmlFor="when">Data e hora (no horário local de cada unidade)</label>
+            <input id="when" type="datetime-local" value={when} min={minLocal()} onChange={(e) => setWhen(e.target.value)} onBlur={() => setWhenTouched(true)} aria-invalid={Boolean(whenError) || undefined} aria-describedby="when-hint" required style={{ maxWidth: 280 }} />
+            {whenError ? <span className="field-error"><IconAlert size="sm" />{whenError}</span> : null}
+            <small id="when-hint" className="hint">Unidades em fusos diferentes publicam no mesmo horário local, cada uma no seu fuso.</small>
+          </div>
+        </section>
+
+        {error && <div className="alert error" role="alert"><IconAlert size="sm" /><span>{error}</span></div>}
+
+        <div className="action-bar">
+          <span className="why" aria-live="polite">
+            {blocker ? <><IconInfo size="sm" style={{ verticalAlign: "-3px", marginRight: 4 }} />{blocker}</> : <><IconCheck size="sm" style={{ verticalAlign: "-3px", marginRight: 4, color: "var(--ok)" }} />Pronto para agendar em {selected.size} conta{selected.size === 1 ? "" : "s"}.</>}
+          </span>
+          <button className="btn primary" disabled={busy || Boolean(blocker)} onClick={submit}>
+            {busy ? <><span className="spinner" aria-hidden="true" /> Agendando...</> : `Agendar em ${selected.size} conta${selected.size === 1 ? "" : "s"}`}
           </button>
         </div>
       </div>
 
-      <AccountSelector units={units} selected={selected} onChange={setSelected} />
+      <AccountSelector units={units} selected={selected} onChange={setSelected} step={3} />
     </div>
   );
 }

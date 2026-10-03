@@ -1,0 +1,76 @@
+/* ===== Surfaces & layout ===== */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-5); box-shadow: var(--shadow-sm); }
+.card.tight { padding: var(--space-4); }
+.grid { display: grid; gap: var(--space-4); }
+.grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid.composer { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; }
+.row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.stack { display: flex; flex-direction: column; gap: var(--space-3); }
+.stack.lg { gap: var(--space-5); }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ===== Forms ===== */
+label { display: block; font-size: var(--fs-sm); font-weight: 600; margin-bottom: 6px; color: var(--text-2); }
+.field { display: flex; flex-direction: column; }
+.field .hint { margin-top: 6px; }
+input[type=text], input[type=email], input[type=password], input[type=datetime-local], input[type=file], textarea, select {
+  width: 100%; min-height: var(--control-h); padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font: inherit; background: #fff; color: var(--text); transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+input[type=file] { padding: 6px; cursor: pointer; }
+textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { border-color: var(--accent); box-shadow: var(--ring); }
+input[aria-invalid=true], textarea[aria-invalid=true] { border-color: var(--err); }
+.field-error { color: var(--err); font-size: var(--fs-sm); margin-top: 6px; display: flex; gap: 6px; align-items: center; }
+
+/* ===== Buttons ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: var(--control-h); padding: 0 14px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.btn:hover { background: var(--surface-2); text-decoration: none; }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--surface-2); }
+.btn.small { min-height: var(--control-h-sm); padding: 0 10px; font-size: var(--fs-sm); }
+.btn.icon-only { padding: 0; width: var(--control-h-sm); }
+.btn.danger { color: var(--err); }
+.btn.danger:hover { background: var(--err-soft); border-color: color-mix(in srgb, var(--err) 40%, var(--border-strong)); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn .spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Badges & chips ===== */
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 600; line-height: 1.4; white-space: nowrap; }
+.badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.badge.SCHEDULED { background: var(--info-soft); color: var(--info); }
+.badge.PUBLISHING { background: var(--warn-soft); color: var(--warn); }
+.badge.PUBLISHED { background: var(--ok-soft); color: var(--ok); }
+.badge.FAILED { background: var(--err-soft); color: var(--err); }
+.badge.CANCELLED { background: var(--surface-3); color: var(--text-2); }
+.badge.platform { background: var(--surface-2); color: var(--text-2); padding-left: 8px; }
+.badge.platform::before { display: none; }
+.chip { display: inline-flex; gap: 8px; align-items: center; min-height: var(--control-h-sm); border: 1px solid var(--border-strong); border-radius: 999px; padding: 4px 12px 4px 10px; font-size: var(--fs-sm); cursor: pointer; background: #fff; color: var(--text); font-weight: 500; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.chip:hover { background: var(--surface-2); }
+.chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hover); }
+.chip input { margin: 0; width: 16px; height: 16px; accent-color: var(--accent); }
+.chip:has(input:focus-visible) { box-shadow: var(--ring); }
+
+/* ===== Feedback ===== */
+.alert { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-sm); font-size: var(--fs-sm); line-height: 1.45; border: 1px solid transparent; }
+.alert svg.icon { margin-top: 1px; }
+.alert.error { background: var(--err-soft); color: var(--err); border-color: color-mix(in srgb, var(--err) 25%, transparent); }
+.alert.ok { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 25%, transparent); }
+.alert.warn { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 25%, transparent); }
+.alert.info { background: var(--info-soft); color: var(--info); border-color: color-mix(in srgb, var(--info) 25%, transparent); }
+.empty { text-align: center; padding: var(--space-6) var(--space-4); color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
+.empty svg.icon { width: 36px; height: 36px; stroke-width: 1.5; color: var(--border-strong); }
+.empty strong { color: var(--text); font-size: var(--fs-md); }
+.skeleton { background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: var(--radius-sm); min-height: 16px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
