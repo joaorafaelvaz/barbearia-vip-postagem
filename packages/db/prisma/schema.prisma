@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Franqueador (tenant). Toda entidade de negócio pertence a uma organização.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  units    Unit[]
+  posts    Post[]
+  media    MediaAsset[]
+  accounts ConnectedAccount[]
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String   @unique
+  name           String?
+  passwordHash   String?
+  role           UserRole @default(MANAGER)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+/// Unidade da franquia. `timezone` é um identificador IANA (ex.: America/Sao_Paulo).
+model Unit {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  city           String?
+  timezone       String   @default("America/Sao_Paulo")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  accounts     ConnectedAccount[]
+
+  @@index([organizationId])
+}
+
+enum Platform {
+  FACEBOOK_PAGE
+  INSTAGRAM
+  GOOGLE_BUSINESS_PROFILE
+}
+
+/// Conta de uma plataforma vinculada a uma unidade. Tokens sempre criptografados (AES-GCM).
+model ConnectedAccount {
+  id             String   @id @default(cuid())
+  organizationId String
+  unitId         String
+  platform       Platform
+  /// Page ID, IG User ID ou `accounts/{a}/locations/{l}`
+  externalId     String
+  displayName    String
+  /// Page Access Token (Meta) ou refresh token (Google), criptografados
+  accessTokenEnc String
+  refreshTokenEnc String?
+  tokenExpiresAt DateTime?
+  /// Para Instagram: id da Page vinculada (necessário para renovar token)
+  parentExternalId String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  targets      PostTarget[]
+
+  @@unique([organizationId, platform, externalId])
+  @@index([unitId])
+}
+
+model MediaAsset {
+  id             String   @id @default(cuid())
+  organizationId String
+  /// chave no bucket
+  storageKey     String
+  publicUrl      String
+  mimeType       String
+  width          Int
+  height         Int
+  bytes          Int
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  posts        PostMedia[]
+
+  @@index([organizationId])
+}
+
+/// Conteúdo de uma postagem. Um Post gera N PostTargets (um por conta selecionada).
+model Post {
+  id             String   @id @default(cuid())
+  organizationId String
+  caption        String
+  /// Horário local escolhido pelo usuário (YYYY-MM-DDTHH:mm) para exibição
+  scheduledLocal String
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  media        PostMedia[]
+  targets      PostTarget[]
+
+  @@index([organizationId, createdAt])
+}
+
+model PostMedia {
+  postId   String
+  mediaId  String
+  position Int    @default(0)
+
+  post  Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media MediaAsset @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([postId, mediaId])
+}
+
+enum TargetStatus {
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+/// Uma publicação concreta: Post × ConnectedAccount, com horário em UTC e status próprio.
+model PostTarget {
+  id                 String       @id @default(cuid())
+  organizationId     String
+  postId             String
+  connectedAccountId String
+  /// Em UTC, convertido do fuso da unidade
+  scheduledAt        DateTime
+  status             TargetStatus @default(SCHEDULED)
+  attempts           Int          @default(0)
+  externalPostId     String?
+  externalUrl        String?
+  lastError          String?
+  publishedAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  post    Post             @relation(fields: [postId], references: [id], onDelete: Cascade)
+  account ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, connectedAccountId])
+  @@index([status, scheduledAt])
+  @@index([organizationId, scheduledAt])
+}
