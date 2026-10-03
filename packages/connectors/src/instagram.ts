@@ -1,17 +1,19 @@
 import { PublishError } from "@fsp/core";
 import { GRAPH_BASE } from "./facebook.js";
 import { defaultFetch, defaultSleep, formBody, mapMetaError, readJson, safeFetch } from "./http.js";
-import type { ConnectorOptions, PublishInput, PublishResult, Publisher } from "./types.js";
+import { splitMedia, type ConnectorOptions, type PublishInput, type PublishResult, type Publisher } from "./types.js";
 
 /** Limite publicado pela Meta: 25 posts por conta a cada 24h (via API). */
 export const INSTAGRAM_DAILY_LIMIT = 25;
 
 const POLL_INTERVAL_MS = 2_000;
-const POLL_MAX_ATTEMPTS = 30;
+/** Imagens processam em segundos; vídeos (Reels) podem levar minutos. */
+const POLL_MAX_ATTEMPTS_IMAGE = 30;
+const POLL_MAX_ATTEMPTS_VIDEO = 150;
 
 /**
  * Publica em um Instagram Business/Creator account (Content Publishing API):
- * 1. POST /{ig-user-id}/media  -> container (image_url + caption)  [ou is_carousel_item]
+ * 1. POST /{ig-user-id}/media  -> container (image_url | video_url+media_type=REELS)
  * 2. GET  /{container}?fields=status_code até FINISHED
  * 3. POST /{ig-user-id}/media_publish {creation_id}
  */
@@ -26,29 +28,35 @@ export class InstagramPublisher implements Publisher {
   }
 
   async publish(input: PublishInput): Promise<PublishResult> {
-    const { account, caption, mediaUrls } = input;
-    if (mediaUrls.length === 0) {
-      throw new PublishError("VALIDATION", "Instagram exige pelo menos uma imagem.");
+    const { account, caption } = input;
+    const { images, video } = splitMedia(input.media);
+    if (input.media.length === 0) {
+      throw new PublishError("VALIDATION", "Instagram exige pelo menos uma imagem ou vídeo.");
     }
-    if (mediaUrls.length > 10) {
+    if (video && images.length > 0) {
+      throw new PublishError("VALIDATION", "Instagram não aceita vídeo e imagens no mesmo post.");
+    }
+    if (images.length > 10) {
       throw new PublishError("VALIDATION", "Instagram aceita no máximo 10 imagens por carrossel.");
     }
     const igUserId = account.externalId;
     const token = account.accessToken;
 
     let containerId: string;
-    if (mediaUrls.length === 1) {
+    if (video) {
       containerId = await this.createContainer(igUserId, {
-        image_url: mediaUrls[0],
+        media_type: "REELS",
+        video_url: video,
+        share_to_feed: "true",
         caption,
         access_token: token,
       });
+    } else if (images.length === 1) {
+      containerId = await this.createContainer(igUserId, { image_url: images[0], caption, access_token: token });
     } else {
       const children: string[] = [];
-      for (const url of mediaUrls) {
-        children.push(
-          await this.createContainer(igUserId, { image_url: url, is_carousel_item: "true", access_token: token }),
-        );
+      for (const url of images) {
+        children.push(await this.createContainer(igUserId, { image_url: url, is_carousel_item: "true", access_token: token }));
       }
       containerId = await this.createContainer(igUserId, {
         media_type: "CAROUSEL",
@@ -58,7 +66,7 @@ export class InstagramPublisher implements Publisher {
       });
     }
 
-    await this.waitUntilFinished(containerId, token);
+    await this.waitUntilFinished(containerId, token, video ? POLL_MAX_ATTEMPTS_VIDEO : POLL_MAX_ATTEMPTS_IMAGE);
 
     const published = await this.postJson(`${GRAPH_BASE}/${igUserId}/media_publish`, {
       creation_id: containerId,
@@ -78,8 +86,8 @@ export class InstagramPublisher implements Publisher {
     return id;
   }
 
-  private async waitUntilFinished(containerId: string, token: string): Promise<void> {
-    for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
+  private async waitUntilFinished(containerId: string, token: string, maxAttempts: number): Promise<void> {
+    for (let i = 0; i < maxAttempts; i++) {
       const url = `${GRAPH_BASE}/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(token)}`;
       const res = await safeFetch(this.fetch, url);
       const body = (await readJson(res)) as Record<string, unknown> | undefined;

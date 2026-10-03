@@ -90,9 +90,15 @@ model ConnectedAccount {
   @@index([unitId])
 }
 
+enum MediaKind {
+  IMAGE
+  VIDEO
+}
+
 model MediaAsset {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
+  kind           MediaKind @default(IMAGE)
   /// chave no bucket
   storageKey     String
   publicUrl      String
@@ -100,7 +106,9 @@ model MediaAsset {
   width          Int
   height         Int
   bytes          Int
-  createdAt      DateTime @default(now())
+  /// duração em segundos (vídeo); null para imagem
+  durationSec    Int?
+  createdAt      DateTime  @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   posts        PostMedia[]

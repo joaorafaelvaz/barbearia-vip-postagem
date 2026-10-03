@@ -20,7 +20,7 @@ export const CAPTION_LIMITS: Record<Platform, number> = {
   GOOGLE_BUSINESS_PROFILE: 1_500,
 };
 
-/** Instagram exige mídia; Facebook e GBP aceitam só texto. */
+/** Instagram exige mídia (imagem ou vídeo); Facebook e GBP aceitam só texto. */
 export const REQUIRES_MEDIA: Record<Platform, boolean> = {
   FACEBOOK_PAGE: false,
   INSTAGRAM: true,

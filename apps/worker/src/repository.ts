@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@fsp/db";
-import type { Platform } from "@fsp/core";
+import type { MediaKind, Platform } from "@fsp/core";
 import type { TargetRecord, TargetRepository } from "./processor.js";
 
 /** Implementação Prisma do repositório usado pelo processador. */
@@ -20,7 +20,10 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
         status: t.status,
         attempts: t.attempts,
         scheduledAt: t.scheduledAt,
-        post: { caption: t.post.caption, mediaUrls: t.post.media.map((m) => m.media.publicUrl) },
+        post: {
+          caption: t.post.caption,
+          media: t.post.media.map((m) => ({ url: m.media.publicUrl, kind: m.media.kind as MediaKind })),
+        },
         account: {
           id: t.account.id,
           organizationId: t.account.organizationId,

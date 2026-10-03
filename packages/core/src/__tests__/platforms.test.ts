@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateCaption } from "../platforms.js";
-import { validateImage } from "../media.js";
+import { validateImage, validateMediaSet, validateVideo } from "../media.js";
 
 describe("validateCaption", () => {
   it("aceita texto curto com mídia em todas as plataformas", () => {
@@ -25,7 +25,7 @@ describe("validateCaption", () => {
 });
 
 describe("validateImage", () => {
-  const ok = { mimeType: "image/jpeg", width: 1080, height: 1350, bytes: 900_000 };
+  const ok = { kind: "IMAGE" as const, mimeType: "image/jpeg", width: 1080, height: 1350, bytes: 900_000 };
 
   it("imagem 4:5 JPEG passa em todas", () => {
     expect(validateImage(ok, ["FACEBOOK_PAGE", "INSTAGRAM", "GOOGLE_BUSINESS_PROFILE"])).toEqual([]);
@@ -44,5 +44,49 @@ describe("validateImage", () => {
   it("imagem pequena falha no GBP", () => {
     const issues = validateImage({ ...ok, width: 200, height: 200 }, ["GOOGLE_BUSINESS_PROFILE"]);
     expect(issues.some((i) => /250x250/.test(i.message))).toBe(true);
+  });
+});
+
+describe("validateVideo", () => {
+  const reel = { kind: "VIDEO" as const, mimeType: "video/mp4", width: 1080, height: 1920, bytes: 50_000_000, durationSec: 30 };
+
+  it("MP4 vertical de 30s passa no Instagram e no Facebook", () => {
+    expect(validateVideo(reel, ["INSTAGRAM", "FACEBOOK_PAGE"])).toEqual([]);
+  });
+
+  it("Google Business Profile não aceita vídeo", () => {
+    const issues = validateVideo(reel, ["GOOGLE_BUSINESS_PROFILE"]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.message).toMatch(/não aceita vídeo/);
+  });
+
+  it("vídeo de 1s falha no Instagram (mínimo 3s) mas passa no Facebook", () => {
+    const issues = validateVideo({ ...reel, durationSec: 1 }, ["INSTAGRAM", "FACEBOOK_PAGE"]);
+    expect(issues.map((i) => i.platform)).toEqual(["INSTAGRAM"]);
+  });
+
+  it("formato não suportado (webm) falha", () => {
+    const issues = validateVideo({ ...reel, mimeType: "video/webm" }, ["FACEBOOK_PAGE"]);
+    expect(issues[0]?.message).toMatch(/MP4, MOV/);
+  });
+});
+
+describe("validateMediaSet", () => {
+  it("só imagens é sempre válido", () => {
+    expect(validateMediaSet(["IMAGE", "IMAGE"], ["INSTAGRAM", "GOOGLE_BUSINESS_PROFILE"])).toEqual([]);
+  });
+
+  it("um vídeo é válido para Instagram e Facebook", () => {
+    expect(validateMediaSet(["VIDEO"], ["INSTAGRAM", "FACEBOOK_PAGE"])).toEqual([]);
+  });
+
+  it("vídeo com conta do Google selecionada é bloqueado", () => {
+    const issues = validateMediaSet(["VIDEO"], ["INSTAGRAM", "GOOGLE_BUSINESS_PROFILE"]);
+    expect(issues.map((i) => i.platform)).toEqual(["GOOGLE_BUSINESS_PROFILE"]);
+  });
+
+  it("dois vídeos ou vídeo misturado com imagem é bloqueado", () => {
+    expect(validateMediaSet(["VIDEO", "VIDEO"], ["INSTAGRAM"]).length).toBe(1);
+    expect(validateMediaSet(["VIDEO", "IMAGE"], ["FACEBOOK_PAGE"]).length).toBe(1);
   });
 });

@@ -92,12 +92,18 @@ erro claro quando a API ainda não está aprovada para o projeto.
 
 Out of scope: publicação de conteúdo.
 
-## Step 5 — Upload e validação de mídia
+## Step 5 — Upload e validação de mídia (imagens e vídeo)
 
 Implementar upload para S3/R2 com URL pública, geração de thumbnails e validação por
 plataforma: dimensões/proporção e tamanho para Instagram (imagem JPEG, proporção 4:5 a
 1.91:1), Facebook e GBP (mínimo 250×250, JPG/PNG). Rejeitar antes de agendar o que não
 atende a alguma plataforma selecionada.
+
+Vídeo (adicionado em 2026-10-03): MP4/MOV, um por post, sem misturar com imagens. Instagram
+publica como Reels (`media_type=REELS`, `video_url`, `share_to_feed`); Facebook via
+`/{page-id}/videos` (`file_url`, exige `publish_video`); Google Business Profile não aceita
+vídeo em posts via API, então a composição bloqueia essa combinação. Metadados do vídeo
+(duração, dimensões) são lidos no navegador.
 
 Critérios de aceite: testes de validação para cada regra; upload retorna URL pública
 acessível; mídia inválida bloqueia o agendamento com mensagem por plataforma.

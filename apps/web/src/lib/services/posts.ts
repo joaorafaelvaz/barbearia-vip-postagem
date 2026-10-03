@@ -1,4 +1,4 @@
-import { localToUtc, validateCaption, type Platform } from "@fsp/core";
+import { localToUtc, validateCaption, validateMediaSet, type MediaKind, type Platform } from "@fsp/core";
 import { enqueuePublish, requeuePublish, dequeuePublish, type PublishQueueLike } from "@fsp/queue";
 import type { PrismaClient } from "@fsp/db";
 import { z } from "zod";
@@ -28,11 +28,14 @@ interface AccountRow {
 export function buildTargets(
   input: Pick<CreatePostInput, "caption" | "scheduledLocal">,
   accounts: readonly AccountRow[],
-  hasMedia: boolean,
+  mediaKinds: readonly MediaKind[],
   now: Date = new Date(),
 ): Array<{ connectedAccountId: string; scheduledAt: Date }> {
   const platforms = [...new Set(accounts.map((a) => a.platform))];
-  const issues = validateCaption(input.caption, platforms, hasMedia);
+  const issues = [
+    ...validateCaption(input.caption, platforms, mediaKinds.length > 0),
+    ...validateMediaSet(mediaKinds, platforms),
+  ];
   if (issues.length > 0) {
     throw new HttpError(400, issues.map((i) => i.message).join(" "), issues);
   }
@@ -66,11 +69,13 @@ export async function createPost(
 
   const media = await deps.prisma.mediaAsset.findMany({
     where: { id: { in: input.mediaIds }, organizationId },
-    select: { id: true },
+    select: { id: true, kind: true },
   });
   if (media.length !== input.mediaIds.length) throw new HttpError(400, "Mídia inválida.");
+  const kindById = new Map(media.map((m) => [m.id, m.kind as MediaKind]));
+  const mediaKinds = input.mediaIds.map((id) => kindById.get(id) ?? "IMAGE");
 
-  const targets = buildTargets(input, accounts as AccountRow[], input.mediaIds.length > 0);
+  const targets = buildTargets(input, accounts as AccountRow[], mediaKinds);
 
   const post = await deps.prisma.$transaction(async (tx) => {
     const created = await tx.post.create({

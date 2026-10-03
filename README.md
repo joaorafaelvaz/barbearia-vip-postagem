@@ -5,7 +5,7 @@ Instagram, Facebook e Google Meu Negócio (Google Business Profile), em um **hor
 escolhido**, com uma única ação.
 
 - Cadastre unidades e conecte as contas de cada uma (OAuth Meta e Google).
-- Crie um post (texto + imagens), selecione N unidades × M plataformas, escolha data/hora.
+- Crie um post (texto + imagens, ou um vídeo), selecione N unidades × M plataformas, escolha data/hora.
 - O sistema converte o horário para o fuso de cada unidade, agenda e publica em background.
 - Painel com calendário, status por conta (agendado / publicando / publicado / falhou),
   re-tentar e cancelar.
@@ -65,7 +65,7 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
    `https://SEU-DOMINIO/api/oauth/meta/callback` (em dev: `http://localhost:3000/api/oauth/meta/callback`).
 3. Copie `App ID` e `App Secret` para `META_APP_ID` e `META_APP_SECRET`.
 4. Em **App Review**, solicite as permissões `pages_show_list`, `pages_read_engagement`,
-   `pages_manage_posts`, `instagram_basic`, `instagram_content_publish`, `business_management`.
+   `pages_manage_posts`, `publish_video`, `instagram_basic`, `instagram_content_publish`, `business_management`.
    Enquanto o app está em modo de desenvolvimento, só usuários com papel no app
    (admin/desenvolvedor/testador) conseguem conectar contas.
 5. Cada unidade precisa de uma **Facebook Page** com um **Instagram Business/Creator**
@@ -84,7 +84,14 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
 
 ### Mídia
 
-Em desenvolvimento as imagens ficam em `apps/web/public/uploads`. Em produção configure um
+Imagens: JPG, PNG, GIF (o Instagram só aceita JPG). Vídeo: MP4 ou MOV, um por postagem, sem
+misturar com imagens. No Instagram o vídeo é publicado como **Reels** (3s a 15min); no Facebook,
+como vídeo da Page (permissão `publish_video`). O **Google Business Profile não aceita vídeo em
+postagens via API**, então a composição bloqueia vídeo quando há conta do Google selecionada.
+Duração e dimensões do vídeo são lidas no navegador no momento do upload; o servidor não
+decodifica vídeo. Limite de upload: 10MB por imagem, 300MB por vídeo.
+
+Em desenvolvimento as mídias ficam em `apps/web/public/uploads`. Em produção configure um
 bucket S3 compatível (`S3_*` no `.env`), pois as plataformas baixam a imagem de uma URL pública.
 
 ## Deploy

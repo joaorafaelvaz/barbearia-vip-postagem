@@ -1,6 +1,6 @@
 import { PublishError } from "@fsp/core";
 import { defaultFetch, mapGoogleError, readJson, safeFetch } from "./http.js";
-import type { ConnectorOptions, PublishInput, PublishResult, Publisher } from "./types.js";
+import { splitMedia, type ConnectorOptions, type PublishInput, type PublishResult, type Publisher } from "./types.js";
 
 export const GBP_POSTS_BASE = "https://mybusiness.googleapis.com/v4";
 
@@ -18,7 +18,11 @@ export class GoogleBusinessProfilePublisher implements Publisher {
   }
 
   async publish(input: PublishInput): Promise<PublishResult> {
-    const { account, caption, mediaUrls } = input;
+    const { account, caption } = input;
+    const { images, video } = splitMedia(input.media);
+    if (video) {
+      throw new PublishError("VALIDATION", "Google Business Profile não aceita vídeo em postagens via API.");
+    }
     if (!/^accounts\/[^/]+\/locations\/[^/]+$/.test(account.externalId)) {
       throw new PublishError("VALIDATION", `Location inválida: ${account.externalId}`);
     }
@@ -27,8 +31,8 @@ export class GoogleBusinessProfilePublisher implements Publisher {
       summary: caption,
       topicType: "STANDARD",
     };
-    if (mediaUrls.length > 0) {
-      payload.media = mediaUrls.map((sourceUrl) => ({ mediaFormat: "PHOTO", sourceUrl }));
+    if (images.length > 0) {
+      payload.media = images.map((sourceUrl) => ({ mediaFormat: "PHOTO", sourceUrl }));
     }
 
     const res = await safeFetch(this.fetch, `${GBP_POSTS_BASE}/${account.externalId}/localPosts`, {

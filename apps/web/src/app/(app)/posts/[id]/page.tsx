@@ -24,7 +24,15 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
       <div className="card stack">
         <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{post.caption}</p>
         {post.media.length > 0 && (
-          <div className="thumbs">{post.media.map((m) => <img key={m.mediaId} src={m.media.publicUrl} alt="" />)}</div>
+          <div className="thumbs">
+            {post.media.map((m) =>
+              m.media.kind === "VIDEO" ? (
+                <video key={m.mediaId} src={m.media.publicUrl} controls style={{ width: 240, maxHeight: 320, borderRadius: 8, border: "1px solid var(--border)" }} />
+              ) : (
+                <img key={m.mediaId} src={m.media.publicUrl} alt="" />
+              ),
+            )}
+          </div>
         )}
       </div>
       <h2>Publicações por conta ({post.targets.length})</h2>

@@ -42,3 +42,6 @@ export const account = {
     accessToken: "GOOGLE_ACCESS_SECRET",
   },
 };
+
+export const img = (url: string) => ({ url, kind: "IMAGE" as const });
+export const vid = (url: string) => ({ url, kind: "VIDEO" as const });

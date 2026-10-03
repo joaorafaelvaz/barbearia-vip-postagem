@@ -1,4 +1,4 @@
-import type { Publisher, PublishInput } from "@fsp/connectors";
+import type { MediaRef, Publisher, PublishInput } from "@fsp/connectors";
 import {
   MAX_ATTEMPTS,
   backoffMs,
@@ -14,7 +14,7 @@ export interface TargetRecord {
   status: string;
   attempts: number;
   scheduledAt: Date;
-  post: { caption: string; mediaUrls: string[] };
+  post: { caption: string; media: MediaRef[] };
   account: {
     id: string;
     organizationId: string;
@@ -86,7 +86,7 @@ export async function processTarget(deps: ProcessorDeps, postTargetId: string): 
     const input: PublishInput = {
       account: { platform: target.account.platform, externalId: target.account.externalId, accessToken },
       caption: target.post.caption,
-      mediaUrls: target.post.mediaUrls,
+      media: target.post.media,
     };
     const result = await deps.publisherFor(target.account.platform).publish(input);
     await deps.repo.markPublished(target.id, result);

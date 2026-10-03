@@ -1,6 +1,6 @@
 import { PublishError } from "@fsp/core";
 import { defaultFetch, formBody, mapMetaError, readJson, safeFetch } from "./http.js";
-import type { ConnectorOptions, PublishInput, PublishResult, Publisher } from "./types.js";
+import { splitMedia, type ConnectorOptions, type PublishInput, type PublishResult, type Publisher } from "./types.js";
 
 export const GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v21.0";
 export const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -11,6 +11,7 @@ export const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
  * - 1 imagem: POST /{page-id}/photos {url, message}
  * - N imagens: POST /{page-id}/photos {url, published=false} para cada,
  *   depois POST /{page-id}/feed {message, attached_media[i]={media_fbid}}
+ * - Vídeo: POST /{page-id}/videos {file_url, description} (exige publish_video)
  */
 export class FacebookPagePublisher implements Publisher {
   readonly platform = "FACEBOOK_PAGE" as const;
@@ -21,18 +22,31 @@ export class FacebookPagePublisher implements Publisher {
   }
 
   async publish(input: PublishInput): Promise<PublishResult> {
-    const { account, caption, mediaUrls } = input;
+    const { account, caption } = input;
+    const { images, video } = splitMedia(input.media);
     const pageId = account.externalId;
     const token = account.accessToken;
 
-    if (mediaUrls.length === 0) {
+    if (video) {
+      if (images.length > 0) throw new PublishError("VALIDATION", "Facebook não aceita vídeo e imagens no mesmo post.");
+      const body = await this.postJson(`${GRAPH_BASE}/${pageId}/videos`, {
+        file_url: video,
+        description: caption,
+        access_token: token,
+      });
+      const videoId = body.id;
+      if (typeof videoId !== "string") throw new PublishError("UNKNOWN", "Graph API não retornou id do vídeo.");
+      return { externalPostId: videoId, externalUrl: `https://www.facebook.com/${pageId}/videos/${videoId}` };
+    }
+
+    if (images.length === 0) {
       const id = await this.post(`${GRAPH_BASE}/${pageId}/feed`, { message: caption, access_token: token });
       return { externalPostId: id, externalUrl: `https://www.facebook.com/${id}` };
     }
 
-    if (mediaUrls.length === 1) {
+    if (images.length === 1) {
       const body = await this.postJson(`${GRAPH_BASE}/${pageId}/photos`, {
-        url: mediaUrls[0],
+        url: images[0],
         message: caption,
         access_token: token,
       });
@@ -41,13 +55,8 @@ export class FacebookPagePublisher implements Publisher {
     }
 
     const fbids: string[] = [];
-    for (const url of mediaUrls) {
-      const id = await this.post(`${GRAPH_BASE}/${pageId}/photos`, {
-        url,
-        published: "false",
-        access_token: token,
-      });
-      fbids.push(id);
+    for (const url of images) {
+      fbids.push(await this.post(`${GRAPH_BASE}/${pageId}/photos`, { url, published: "false", access_token: token }));
     }
     const fields: Record<string, string> = { message: caption, access_token: token };
     fbids.forEach((fbid, i) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InstagramPublisher } from "../instagram.js";
-import { account, fakeFetch } from "./helpers.js";
+import { account, fakeFetch, img } from "./helpers.js";
 
 const noSleep = async () => {};
 
@@ -16,7 +16,7 @@ describe("InstagramPublisher", () => {
     const res = await new InstagramPublisher({ fetch, sleep: noSleep }).publish({
       account: account.ig,
       caption: "Novo corte",
-      mediaUrls: ["https://cdn/x.jpg"],
+      media: [img("https://cdn/x.jpg")],
     });
     expect(res).toEqual({ externalPostId: "media99", externalUrl: "https://www.instagram.com/p/abc/" });
     expect(calls[0]?.url).toMatch(/\/ig456\/media$/);
@@ -37,7 +37,7 @@ describe("InstagramPublisher", () => {
     const res = await new InstagramPublisher({ fetch, sleep: noSleep }).publish({
       account: account.ig,
       caption: "Album",
-      mediaUrls: ["https://cdn/1.jpg", "https://cdn/2.jpg"],
+      media: [img("https://cdn/1.jpg"), img("https://cdn/2.jpg")],
     });
     expect(res.externalPostId).toBe("media1");
     expect(res.externalUrl).toBeUndefined();
@@ -50,7 +50,7 @@ describe("InstagramPublisher", () => {
   it("sem mídia é VALIDATION", async () => {
     const { fetch } = fakeFetch([]);
     await expect(
-      new InstagramPublisher({ fetch, sleep: noSleep }).publish({ account: account.ig, caption: "x", mediaUrls: [] }),
+      new InstagramPublisher({ fetch, sleep: noSleep }).publish({ account: account.ig, caption: "x", media: [] }),
     ).rejects.toMatchObject({ code: "VALIDATION" });
   });
 
@@ -63,7 +63,7 @@ describe("InstagramPublisher", () => {
       new InstagramPublisher({ fetch, sleep: noSleep }).publish({
         account: account.ig,
         caption: "x",
-        mediaUrls: ["https://cdn/x.jpg"],
+        media: [img("https://cdn/x.jpg")],
       }),
     ).rejects.toMatchObject({ code: "MEDIA_REJECTED", retryable: false });
   });
@@ -74,7 +74,7 @@ describe("InstagramPublisher", () => {
       await new InstagramPublisher({ fetch, sleep: noSleep }).publish({
         account: account.ig,
         caption: "x",
-        mediaUrls: ["https://cdn/x.jpg"],
+        media: [img("https://cdn/x.jpg")],
       });
     } catch (e) {
       const text = (e as { toPersisted(): string }).toPersisted();

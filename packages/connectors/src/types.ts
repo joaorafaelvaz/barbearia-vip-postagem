@@ -1,4 +1,4 @@
-import type { Platform } from "@fsp/core";
+import type { MediaKind, Platform } from "@fsp/core";
 
 /** Dados mínimos de uma conta para publicar. O token já vem descriptografado. */
 export interface AccountCredentials {
@@ -8,11 +8,17 @@ export interface AccountCredentials {
   accessToken: string;
 }
 
+/** Mídia pública referenciada por URL. */
+export interface MediaRef {
+  url: string;
+  kind: MediaKind;
+}
+
 export interface PublishInput {
   account: AccountCredentials;
   caption: string;
-  /** URLs públicas das imagens, em ordem. */
-  mediaUrls: readonly string[];
+  /** Mídias públicas, em ordem. Um post tem só imagens ou um único vídeo. */
+  media: readonly MediaRef[];
 }
 
 export interface PublishResult {
@@ -32,4 +38,10 @@ export interface ConnectorOptions {
   fetch?: FetchLike;
   /** Para o polling do container do Instagram. */
   sleep?: (ms: number) => Promise<void>;
+}
+
+export function splitMedia(media: readonly MediaRef[]): { images: string[]; video: string | undefined } {
+  const images = media.filter((m) => m.kind === "IMAGE").map((m) => m.url);
+  const video = media.find((m) => m.kind === "VIDEO")?.url;
+  return { images, video };
 }

@@ -12,7 +12,7 @@ function makeTarget(over: Partial<TargetRecord> = {}, acc: Partial<TargetRecord[
     status: "SCHEDULED",
     attempts: 0,
     scheduledAt: new Date("2026-10-03T12:00:00Z"),
-    post: { caption: "Olá", mediaUrls: ["https://cdn/a.jpg"] },
+    post: { caption: "Olá", media: [{ url: "https://cdn/a.jpg", kind: "IMAGE" }] },
     account: {
       id: "acc1",
       organizationId: "org1",
