@@ -33,6 +33,7 @@ export const IconFacebook = (p: P) => <I {...p}><path d="M18 2h-3a5 5 0 0 0-5 5v
 export const IconInstagram = (p: P) => <I {...p}><rect x="2" y="2" width="20" height="20" rx="5" /><circle cx="12" cy="12" r="4" /><path d="M17.5 6.5h.01" /></I>;
 export const IconMapPin = (p: P) => <I {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></I>;
 
+export const IconMenu = (p: P) => <I {...p}><path d="M4 6h16M4 12h16M4 18h16" /></I>;
 export const IconUser = (p: P) => <I {...p}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></I>;
 export const IconUsers = (p: P) => <I {...p}><circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 14 0" /><path d="M16 4a4 4 0 0 1 0 8" /><path d="M22 21a7 7 0 0 0-5-6.7" /></I>;
 export const IconShield = (p: P) => <I {...p}><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" /></I>;

@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
-import { IconDashboard, IconLogout, IconMegaphone, IconPlus, IconStore, IconUser, IconUsers } from "@/components/Icons";
-import { NavLink } from "@/components/NavLink";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AppSidebar } from "@/components/AppSidebar";
 import { ROLE_LABELS, isAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
@@ -14,29 +12,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <a className="skip-link" href="#conteudo">Pular para o conteúdo</a>
-      <aside className="sidebar" aria-label="Navegação principal">
-        <div className="brand">
-          <span className="brand-name"><span className="mark"><IconMegaphone /></span><span>Publicador da Rede</span></span>
-          <ThemeToggle />
-        </div>
-        <nav className="stack" style={{ gap: 2 }}>
-          <NavLink href="/" icon={<IconDashboard />}>Painel</NavLink>
-          <NavLink href="/novo" icon={<IconPlus />}>Nova postagem</NavLink>
-          <NavLink href="/unidades" icon={<IconStore />}>Unidades e contas</NavLink>
-          {session && isAdmin(session) && <NavLink href="/usuarios" icon={<IconUsers />}>Usuários</NavLink>}
-          <NavLink href="/conta" icon={<IconUser />}>Minha conta</NavLink>
-        </nav>
-        <div className="spacer" />
-        <div className="user">
-          <strong>{org?.name ?? "Minha rede"}</strong>
-          <span>{session?.email}{session ? " · " + ROLE_LABELS[session.role] : ""}</span>
-        </div>
-        <form action="/api/auth/logout" method="post">
-          <button className="btn small" type="submit" style={{ width: "100%" }}>
-            <IconLogout size="sm" /> Sair
-          </button>
-        </form>
-      </aside>
+      <AppSidebar
+        orgName={org?.name ?? "Minha rede"}
+        email={session?.email ?? ""}
+        name={session?.name ?? null}
+        roleLabel={session ? ROLE_LABELS[session.role] : ""}
+        isAdmin={Boolean(session && isAdmin(session))}
+      />
       <main className="main" id="conteudo">{children}</main>
     </div>
   );
