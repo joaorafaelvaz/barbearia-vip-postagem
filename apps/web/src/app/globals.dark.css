@@ -1,0 +1,26 @@
+/* ===== Modo escuro =====
+   Aplicado por preferência do sistema (sem escolha manual) ou por data-theme="dark". */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #15130f; --surface: #1f1c17; --surface-2: #27231d; --surface-3: #332e26;
+    --text: #efe9df; --text-2: #cfc7b9; --muted: #a39b8d;
+    --border: #332e26; --border-strong: #4a443a;
+    --accent: #e0683f; --accent-hover: #ea7b55; --accent-soft: #3a241b; --accent-ink: #1a0f0a;
+    --ok: #5fcf8f; --ok-soft: #173126; --warn: #e6b253; --warn-soft: #3a2d12;
+    --err: #ff7b72; --err-soft: #3d1b19; --info: #7fa6ef; --info-soft: #1b2740;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.4); --shadow: 0 4px 16px rgba(0,0,0,.5);
+    --sidebar-bg: #0f0e0b; --sidebar-text: #cfc7b9; --sidebar-muted: #8a8275;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #15130f; --surface: #1f1c17; --surface-2: #27231d; --surface-3: #332e26;
+  --text: #efe9df; --text-2: #cfc7b9; --muted: #a39b8d;
+  --border: #332e26; --border-strong: #4a443a;
+  --accent: #e0683f; --accent-hover: #ea7b55; --accent-soft: #3a241b; --accent-ink: #1a0f0a;
+  --ok: #5fcf8f; --ok-soft: #173126; --warn: #e6b253; --warn-soft: #3a2d12;
+  --err: #ff7b72; --err-soft: #3d1b19; --info: #7fa6ef; --info-soft: #1b2740;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4); --shadow: 0 4px 16px rgba(0,0,0,.5);
+  --sidebar-bg: #0f0e0b; --sidebar-text: #cfc7b9; --sidebar-muted: #8a8275;
+}

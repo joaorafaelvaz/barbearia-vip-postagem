@@ -17,7 +17,7 @@ label { display: block; font-size: var(--fs-sm); font-weight: 600; margin-bottom
 .field .hint { margin-top: 6px; }
 input[type=text], input[type=email], input[type=password], input[type=datetime-local], input[type=file], textarea, select {
   width: 100%; min-height: var(--control-h); padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-  font: inherit; background: #fff; color: var(--text); transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  font: inherit; background: var(--surface); color: var(--text); transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 input[type=file] { padding: 6px; cursor: pointer; }
 textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
@@ -56,7 +56,7 @@ input[aria-invalid=true], textarea[aria-invalid=true] { border-color: var(--err)
 .badge.CANCELLED { background: var(--surface-3); color: var(--text-2); }
 .badge.platform { background: var(--surface-2); color: var(--text-2); padding-left: 8px; }
 .badge.platform::before { display: none; }
-.chip { display: inline-flex; gap: 8px; align-items: center; min-height: var(--control-h-sm); border: 1px solid var(--border-strong); border-radius: 999px; padding: 4px 12px 4px 10px; font-size: var(--fs-sm); cursor: pointer; background: #fff; color: var(--text); font-weight: 500; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.chip { display: inline-flex; gap: 8px; align-items: center; min-height: var(--control-h-sm); border: 1px solid var(--border-strong); border-radius: 999px; padding: 4px 12px 4px 10px; font-size: var(--fs-sm); cursor: pointer; background: var(--surface); color: var(--text); font-weight: 500; transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease); }
 .chip:hover { background: var(--surface-2); }
 .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hover); }
 .chip input { margin: 0; width: 16px; height: 16px; accent-color: var(--accent); }

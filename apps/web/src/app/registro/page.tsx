@@ -2,12 +2,13 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { AuthForm } from "@/components/AuthForm";
 import { IconMegaphone } from "@/components/Icons";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function RegisterPage() {
   return (
     <div className="auth">
       <div className="card stack">
-        <div className="brand"><span className="mark"><IconMegaphone /></span> Publicador da Rede</div>
+        <div className="brand row between"><span className="row" style={{ gap: 10 }}><span className="mark"><IconMegaphone /></span> Publicador da Rede</span><ThemeToggle /></div>
         <h1 style={{ fontSize: "var(--fs-xl)" }}>Criar conta da rede</h1>
         <p className="muted">Você será o administrador. Depois cadastre as unidades e conecte as contas de cada uma.</p>
         <Suspense>

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { IconDashboard, IconLogout, IconMegaphone, IconPlus, IconStore } from "@/components/Icons";
 import { NavLink } from "@/components/NavLink";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
 
@@ -14,8 +15,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <a className="skip-link" href="#conteudo">Pular para o conteúdo</a>
       <aside className="sidebar" aria-label="Navegação principal">
         <div className="brand">
-          <span className="mark"><IconMegaphone /></span>
-          <span>Publicador da Rede</span>
+          <span className="brand-name"><span className="mark"><IconMegaphone /></span><span>Publicador da Rede</span></span>
+          <ThemeToggle />
         </div>
         <nav className="stack" style={{ gap: 2 }}>
           <NavLink href="/" icon={<IconDashboard />}>Painel</NavLink>

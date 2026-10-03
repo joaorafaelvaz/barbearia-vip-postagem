@@ -100,6 +100,13 @@ bucket S3 compatível (`S3_*` no `.env`), pois as plataformas baixam a imagem de
 das mesmas variáveis de ambiente (`DATABASE_URL`, `REDIS_URL`, `APP_ENCRYPTION_KEY`, `AUTH_*`,
 `META_*`, `GOOGLE_*`, `S3_*`). Rode `pnpm db:deploy` antes de subir a versão nova.
 
+## Interface
+
+Tema claro e escuro: segue a preferência do sistema por padrão; o botão na barra lateral
+fixa a escolha no navegador (`localStorage`), aplicada antes da primeira pintura para não
+piscar. Tokens de cor ficam em `apps/web/src/app/globals.css` (claro) e
+`globals.dark.css` (escuro).
+
 ## Segurança
 
 - Tokens de acesso são cifrados com AES-256-GCM antes de ir ao banco e nunca aparecem em logs.
