@@ -10,6 +10,8 @@ if [ ! -f .env.production ]; then
   exit 1
 fi
 
+ln -sf .env.production .env
+
 echo "==> Atualizando código ($BRANCH)"
 git fetch --all --prune
 git checkout "$BRANCH"

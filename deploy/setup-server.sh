@@ -24,6 +24,7 @@ if [ ! -d "$APP_DIR/.git" ]; then
 fi
 cd "$APP_DIR"
 mkdir -p data/uploads /var/www/certbot
+ln -sf .env.production .env   # o Compose lê .env sozinho: comandos avulsos dispensam --env-file
 chown -R 1000:1000 data/uploads
 
 if [ ! -f .env.production ]; then

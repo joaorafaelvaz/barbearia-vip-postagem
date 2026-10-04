@@ -126,7 +126,8 @@ cd /opt/postagem && bash deploy/deploy.sh
 ```
 
 Faz `git pull`, reconstrói as imagens, aplica as migrations (serviço `migrate`) e reinicia
-web e worker. Logs: `docker compose -f docker-compose.prod.yml logs -f web worker`.
+web e worker. Logs: `docker compose -f docker-compose.prod.yml logs -f web worker` (o `.env` é um link para
+`.env.production`, então os comandos do Compose não precisam de `--env-file`).
 
 ### Mídia em produção
 
