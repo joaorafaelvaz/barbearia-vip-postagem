@@ -141,6 +141,9 @@ pública. Para usar S3/R2, preencha as variáveis `S3_*`. O limite de upload no 
   delega unidades a cada gestor em **Usuários**. Pode desativar usuários e promover gestores.
 - **Gestor**: só vê e publica nas unidades delegadas. Não cadastra unidades nem acessa a
   gestão de usuários. A API devolve 403 fora desse escopo.
+- O cadastro público em `/registro` só funciona até existir a primeira organização; depois
+  disso responde 403 e a tela de login deixa de oferecer "Criar conta". `ALLOW_SIGNUP=true`
+  reabre (usado em desenvolvimento e nos testes).
 - Cada usuário troca a própria senha em **Minha conta**. Usuários são criados pelo
   administrador com uma senha inicial (não há envio de e-mail).
 

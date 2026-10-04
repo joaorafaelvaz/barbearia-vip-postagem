@@ -16,9 +16,21 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+/**
+ * Cadastro público só enquanto não existe nenhuma organização (primeiro administrador).
+ * ALLOW_SIGNUP=true mantém aberto (desenvolvimento e testes).
+ */
+export async function isSignupOpen(prisma: PrismaClient): Promise<boolean> {
+  if (process.env.ALLOW_SIGNUP === "true") return true;
+  return (await prisma.organization.count()) === 0;
+}
+
 /** Cria a organização (franqueador) e o usuário OWNER. */
 export async function register(prisma: PrismaClient, raw: unknown): Promise<SessionUser> {
   const input = registerSchema.parse(raw);
+  if (!(await isSignupOpen(prisma))) {
+    throw new HttpError(403, "O cadastro está fechado. Peça ao administrador da rede para criar seu usuário.");
+  }
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) throw new HttpError(409, "Já existe uma conta com este e-mail.");
   const passwordHash = await bcrypt.hash(input.password, 12);

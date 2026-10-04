@@ -29,7 +29,7 @@ function Field({ id, icon, ...input }: { id: string; icon: ReactNode } & React.I
  * `mode` inicial vem da rota (/login ou /registro); alternar atualiza a URL.
  * O formulário ativo vem primeiro no DOM e usa os ids simples (#email, #password).
  */
-export default function AuthSwitch({ mode: initial }: { mode: AuthMode }) {
+export default function AuthSwitch({ mode: initial, allowSignup = true }: { mode: AuthMode; allowSignup?: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
   const [mode, setMode] = useState<AuthMode>(initial);
@@ -38,6 +38,7 @@ export default function AuthSwitch({ mode: initial }: { mode: AuthMode }) {
   const signUp = mode === "signup";
 
   function switchTo(next: AuthMode) {
+    if (next === "signup" && !allowSignup) return;
     setMode(next);
     setError(null);
     router.replace(next === "signup" ? "/registro" : "/login");
@@ -94,9 +95,18 @@ export default function AuthSwitch({ mode: initial }: { mode: AuthMode }) {
         <div className="as-panels">
           <div className="as-panel left">
             <div className="content">
-              <h3>Primeira vez aqui?</h3>
-              <p>Crie a conta da sua rede, cadastre as unidades e agende a mesma postagem para todas elas.</p>
-              <button type="button" className="as-btn transparent" onClick={() => switchTo("signup")}>Criar conta</button>
+              {allowSignup ? (
+                <>
+                  <h3>Primeira vez aqui?</h3>
+                  <p>Crie a conta da sua rede, cadastre as unidades e agende a mesma postagem para todas elas.</p>
+                  <button type="button" className="as-btn transparent" onClick={() => switchTo("signup")}>Criar conta</button>
+                </>
+              ) : (
+                <>
+                  <h3>Ainda não tem acesso?</h3>
+                  <p>Os usuários são criados pelo administrador da rede. Peça a ele seu e-mail e senha inicial.</p>
+                </>
+              )}
             </div>
           </div>
           <div className="as-panel right">
