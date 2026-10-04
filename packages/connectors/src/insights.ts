@@ -63,7 +63,7 @@ async function metaInsights(f: FetchLike, id: string, metrics: string[], token: 
     } catch (e) {
       if (!(e instanceof PublishError)) throw e;
       if (e.code === "VALIDATION") {
-        const rejected = wanted.filter((m) => new RegExp("\b" + m + "\b", "i").test(e.message));
+        const rejected = wanted.filter((m) => new RegExp("(^|[^A-Za-z0-9_])" + m + "([^A-Za-z0-9_]|$)", "i").test(e.message));
         if (rejected.length > 0) {
           missing.push(...rejected);
           wanted = wanted.filter((m) => !rejected.includes(m));
