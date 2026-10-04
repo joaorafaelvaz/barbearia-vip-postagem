@@ -55,5 +55,13 @@ test("admin cria gestor com uma unidade delegada; gestor só vê essa unidade e 
   expect(forbidden.status()).toBe(403);
   const usersApi = await mp.request.get("/api/users");
   expect(usersApi.status()).toBe(403);
+  // gestor não remove unidade; admin remove e o gestor deixa de vê-la
+  const delByManager = await mp.request.delete(`/api/units/${norte.id}`);
+  expect(delByManager.status()).toBe(403);
   await ctx.close();
+
+  const delByAdmin = await page.request.delete(`/api/units/${norte.id}`);
+  expect(delByAdmin.status()).toBe(200);
+  expect(await prisma.unit.findUnique({ where: { id: norte.id } })).toBeNull();
+  expect(await prisma.connectedAccount.count({ where: { unitId: norte.id } })).toBe(0);
 });

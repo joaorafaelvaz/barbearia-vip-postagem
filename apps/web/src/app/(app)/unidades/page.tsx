@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlatformBadge } from "@/components/Badges";
+import { DeleteUnitButton } from "@/components/DeleteUnitButton";
 import { DisconnectButton } from "@/components/DisconnectButton";
 import { IconAlert, IconCheck, IconFacebook, IconMapPin, IconStore } from "@/components/Icons";
 import { UnitForm } from "@/components/UnitForm";
@@ -55,6 +56,7 @@ export default async function UnitsPage({ searchParams }: { searchParams: Promis
                 <div className="row">
                   {hasMeta && <Link className="btn small" href={`/api/oauth/meta/start?unitId=${u.id}`}><IconFacebook size="sm" /> Facebook/Instagram</Link>}
                   {hasGoogle && <Link className="btn small" href={`/api/oauth/google/start?unitId=${u.id}`}><IconMapPin size="sm" /> Google</Link>}
+                  {admin && <DeleteUnitButton id={u.id} name={u.name} />}
                 </div>
               </div>
               {u.accounts.length === 0 ? (
