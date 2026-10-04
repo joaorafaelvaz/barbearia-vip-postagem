@@ -2,14 +2,15 @@ import { config as loadEnv } from "dotenv";
 import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
-import { createInsightsFetcher, createPublisher, refreshGoogleAccessToken } from "@fsp/connectors";
-import { METRICS_JOB_NAME, PUBLISH_QUEUE_NAME, TokenCipher, type MetricsJobData, type PublishJobData } from "@fsp/core";
+import { createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken } from "@fsp/connectors";
+import { IMPORT_JOB_NAME, METRICS_JOB_NAME, PUBLISH_QUEUE_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PublishJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
-import { createPublishQueue, createRedisConnection, ensureMetricsScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
+import { createPublishQueue, createRedisConnection, ensureImportScheduler, ensureMetricsScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
 import { Worker } from "bullmq";
+import { importPosts } from "./imports.js";
 import { collectMetrics } from "./metrics.js";
 import { processTarget, resolveAccessToken, type ProcessorDeps } from "./processor.js";
-import { prismaMetricsRepository, prismaTargetRepository } from "./repository.js";
+import { prismaImportRepository, prismaMetricsRepository, prismaTargetRepository } from "./repository.js";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -44,10 +45,27 @@ async function main(): Promise<void> {
   };
 
   const metricsRepo = prismaMetricsRepository(prisma);
+  const importRepo = prismaImportRepository(prisma);
   const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 5);
   const worker = new Worker<AppJobData>(
     PUBLISH_QUEUE_NAME,
     async (job) => {
+      if (job.name === IMPORT_JOB_NAME) {
+        const data = job.data as ImportJobData;
+        return importPosts(
+          {
+            repo: importRepo,
+            listerFor: (platform) => createPostLister(platform),
+            credentials: async (a) => ({
+              platform: a.platform,
+              externalId: a.externalId,
+              accessToken: await resolveAccessToken(deps, { account: { ...a, isActive: true } }, new Date()),
+            }),
+            log: deps.log,
+          },
+          data,
+        );
+      }
       if (job.name === METRICS_JOB_NAME) {
         const data = job.data as MetricsJobData;
         return collectMetrics(
@@ -80,6 +98,7 @@ async function main(): Promise<void> {
   worker.on("error", (err) => console.error("worker error", err.message));
 
   await ensureMetricsScheduler(queue);
+  await ensureImportScheduler(queue);
   console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, metricsScheduler: "6h" }));
 
   const shutdown = async () => {

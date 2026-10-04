@@ -11,6 +11,7 @@ export * from "./google-business.js";
 export * from "./oauth/meta.js";
 export * from "./oauth/google.js";
 export * from "./insights.js";
+export * from "./imports.js";
 export { mapMetaError, mapGoogleError } from "./http.js";
 
 /** Fábrica: devolve o Publisher da plataforma. */

@@ -101,6 +101,7 @@ model ConnectedAccount {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   targets      PostTarget[]
+  externalPosts ExternalPost[]
 
   @@unique([organizationId, platform, externalId])
   @@index([unitId])
@@ -214,4 +215,34 @@ model TargetMetrics {
   target PostTarget @relation(fields: [postTargetId], references: [id], onDelete: Cascade)
 
   @@index([fetchedAt])
+}
+
+/// Publicação feita fora do sistema, importada da plataforma (últimos 90 dias) para o Analytics.
+model ExternalPost {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  connectedAccountId String
+  platform           Platform
+  externalId         String
+  permalink          String?
+  caption            String   @default("")
+  mediaType          String?
+  publishedAt        DateTime
+  likes              Int      @default(0)
+  comments           Int      @default(0)
+  shares             Int      @default(0)
+  reach              Int      @default(0)
+  impressions        Int      @default(0)
+  saves              Int      @default(0)
+  clicks             Int      @default(0)
+  partial            Boolean  @default(true)
+  lastError          String?
+  metricsFetchedAt   DateTime?
+  importedAt         DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  account ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([connectedAccountId, externalId])
+  @@index([organizationId, publishedAt])
 }

@@ -47,7 +47,11 @@ export function TopPostsTable({ data, tz }: { data: AnalyticsData; tz: string })
           <tbody>
             {data.topPosts.map((t) => (
               <tr key={t.targetId}>
-                <td><Link href={`/posts/${t.postId}`}>{shorten(t.caption || "(sem texto)", 50)}</Link><br /><small>{t.publishedAt ? formatInTz(t.publishedAt, tz) : ""}</small></td>
+                <td>
+                  {t.postId ? <Link href={`/posts/${t.postId}`}>{shorten(t.caption || "(sem texto)", 50)}</Link> : <span>{shorten(t.caption || "(sem texto)", 50)}</span>}
+                  {t.source === "external" && <span className="badge platform" style={{ marginLeft: 6 }}>importada</span>}
+                  <br /><small>{t.publishedAt ? formatInTz(t.publishedAt, tz) : ""}</small>
+                </td>
                 <td>{t.unit}</td><td><PlatformBadge platform={t.platform} /></td>
                 <td>{n(t.likes)}</td><td>{n(t.comments)}</td><td>{n(t.shares)}</td><td>{n(t.reach)}</td>
                 <td>{t.externalUrl && <a href={t.externalUrl} target="_blank" rel="noreferrer">Ver</a>}</td>

@@ -152,6 +152,14 @@ reconectadas para liberar essas métricas. No Google Business Profile, as métri
 dependem da API `localPosts:reportInsights`; quando ela não responde, a publicação fica marcada
 como parcial sem interromper a coleta.
 
+### Importação do histórico
+
+Publicações feitas fora do sistema nos últimos 90 dias são importadas de cada conta conectada
+(Facebook: posts da Página; Instagram: mídias da conta; Google: posts da ficha) para a tabela
+`ExternalPost`, marcadas como "importada" no Analytics. A importação roda ao conectar uma conta,
+uma vez por dia no worker e pelo botão "Importar publicações". O engajamento das importadas é
+atualizado pela mesma coleta de métricas.
+
 ## Usuários e permissões
 
 - **Administrador**: vê todas as unidades, cadastra unidades, conecta contas, cria usuários e

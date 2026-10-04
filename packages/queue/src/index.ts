@@ -1,10 +1,10 @@
-import { METRICS_EVERY_MS, METRICS_JOB_NAME, METRICS_SCHEDULER_ID, PUBLISH_QUEUE_NAME, delayUntil, publishJobId, type MetricsJobData, type PublishJobData } from "@fsp/core";
+import { IMPORT_EVERY_MS, IMPORT_JOB_NAME, IMPORT_SCHEDULER_ID, METRICS_EVERY_MS, METRICS_JOB_NAME, METRICS_SCHEDULER_ID, PUBLISH_QUEUE_NAME, delayUntil, publishJobId, type ImportJobData, type MetricsJobData, type PublishJobData } from "@fsp/core";
 import { Queue, type JobsOptions } from "bullmq";
 import { Redis } from "ioredis";
 
 export { PUBLISH_QUEUE_NAME } from "@fsp/core";
-export type { PublishJobData, MetricsJobData } from "@fsp/core";
-export { METRICS_JOB_NAME } from "@fsp/core";
+export type { PublishJobData, MetricsJobData, ImportJobData } from "@fsp/core";
+export { METRICS_JOB_NAME, IMPORT_JOB_NAME } from "@fsp/core";
 
 export function createRedisConnection(url: string = process.env.REDIS_URL ?? "redis://localhost:6379"): Redis {
   return new Redis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
@@ -16,7 +16,7 @@ export interface PublishQueueLike {
   getJob(jobId: string): Promise<{ remove(): Promise<void>; getState(): Promise<string> } | undefined | null>;
 }
 
-export type AppJobData = PublishJobData | MetricsJobData;
+export type AppJobData = PublishJobData | MetricsJobData | ImportJobData;
 
 export function createPublishQueue(connection: Redis): Queue<AppJobData> {
   return new Queue<AppJobData>(PUBLISH_QUEUE_NAME, {
@@ -76,4 +76,16 @@ export async function ensureMetricsScheduler(queue: Queue<AppJobData>): Promise<
 export async function enqueueMetricsNow(queue: PublishQueueLike, organizationId: string): Promise<void> {
   const slot = Math.floor(Date.now() / 60_000); // no máximo 1 por minuto por organização
   await queue.add(METRICS_JOB_NAME, { organizationId } as never, { jobId: `metrics-${organizationId}-${slot}`, attempts: 1, removeOnComplete: true });
+}
+
+/** Agendador diário da importação de publicações externas (idempotente). */
+export async function ensureImportScheduler(queue: Queue<AppJobData>): Promise<void> {
+  await queue.upsertJobScheduler(IMPORT_SCHEDULER_ID, { every: IMPORT_EVERY_MS }, { name: IMPORT_JOB_NAME, data: {} });
+}
+
+/** Importação imediata (botão ou logo após conectar uma conta); 1 por minuto por organização/conta. */
+export async function enqueueImportNow(queue: PublishQueueLike, data: ImportJobData): Promise<void> {
+  const slot = Math.floor(Date.now() / 60_000);
+  const key = data.connectedAccountId ?? data.organizationId ?? "all";
+  await queue.add(IMPORT_JOB_NAME, data as never, { jobId: `import-${key}-${slot}`, attempts: 1, removeOnComplete: true });
 }

@@ -1,4 +1,5 @@
 import { listGoogleLocations } from "@fsp/connectors";
+import { enqueueImportNow } from "@fsp/queue";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -6,6 +7,7 @@ import { HttpError, route } from "@/lib/api";
 import { assertUnitAllowed } from "@/lib/authz";
 import { getCipher } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { getQueue } from "@/lib/queue";
 import { GOOGLE_PENDING_COOKIE, type GooglePending } from "@/lib/oauth-google";
 import { connectGoogleLocations } from "@/lib/services/accounts";
 import { requireSession } from "@/lib/session";
@@ -26,6 +28,7 @@ export const POST = route(async (req: Request) => {
     refreshToken: pending.refreshToken,
     expiresAt: new Date(pending.expiresAt),
   });
+  await enqueueImportNow(getQueue(), { organizationId: s.organizationId }).catch(() => undefined); // importa o histórico das contas novas
   const res = NextResponse.json({ connected: locations.length });
   res.cookies.set(GOOGLE_PENDING_COOKIE, "", { path: "/", maxAge: 0 });
   return res;

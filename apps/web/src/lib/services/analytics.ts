@@ -11,13 +11,13 @@ export interface Engagement { likes: number; comments: number; shares: number; r
 
 export interface AnalyticsData {
   range: { from: Date; to: Date; days: number };
-  totals: { published: number; failed: number; scheduled: number; cancelled: number; successRate: number };
+  totals: { published: number; failed: number; scheduled: number; cancelled: number; successRate: number; imported: number };
   engagement: Engagement;
   metricsCoverage: { withMetrics: number; partial: number; lastFetchedAt: Date | null };
   series: DayPoint[];
   byUnit: Array<{ unitId: string; name: string; published: number; failed: number } & Engagement>;
   byPlatform: Array<{ platform: string; published: number; failed: number } & Engagement>;
-  topPosts: Array<{ targetId: string; postId: string; caption: string; unit: string; platform: string; externalUrl: string | null; publishedAt: Date | null; score: number } & Engagement>;
+  topPosts: Array<{ targetId: string; postId: string | null; source: "system" | "external"; caption: string; unit: string; platform: string; externalUrl: string | null; publishedAt: Date | null; score: number } & Engagement>;
   failures: Array<{ code: string; label: string; count: number }>;
 }
 
@@ -36,7 +36,7 @@ export async function getAnalytics(prisma: PrismaClient, organizationId: string,
     include: { metrics: true, post: { select: { id: true, caption: true } }, account: { select: { platform: true, unit: { select: { id: true, name: true, timezone: true } } } } },
   });
 
-  const totals = { published: 0, failed: 0, scheduled: 0, cancelled: 0, successRate: 0 };
+  const totals = { published: 0, failed: 0, scheduled: 0, cancelled: 0, successRate: 0, imported: 0 };
   const engagement = zero();
   const coverage = { withMetrics: 0, partial: 0, lastFetchedAt: null as Date | null };
   const units = new Map<string, AnalyticsData["byUnit"][number]>();
@@ -57,7 +57,7 @@ export async function getAnalytics(prisma: PrismaClient, organizationId: string,
         if (!coverage.lastFetchedAt || t.metrics.fetchedAt > coverage.lastFetchedAt) coverage.lastFetchedAt = t.metrics.fetchedAt;
         const m = { likes: t.metrics.likes, comments: t.metrics.comments, shares: t.metrics.shares, reach: t.metrics.reach, impressions: t.metrics.impressions, saves: t.metrics.saves, clicks: t.metrics.clicks };
         add(engagement, m); add(u, m); add(p, m);
-        top.push({ targetId: t.id, postId: t.post.id, caption: t.post.caption, unit: t.account.unit.name, platform: t.account.platform, externalUrl: t.externalUrl, publishedAt: t.publishedAt, score: engagementScore(m), ...m });
+        top.push({ targetId: t.id, postId: t.post.id, source: "system", caption: t.post.caption, unit: t.account.unit.name, platform: t.account.platform, externalUrl: t.externalUrl, publishedAt: t.publishedAt, score: engagementScore(m), ...m });
       }
     } else if (t.status === "FAILED") {
       totals.failed++; u.failed++; p.failed++;
@@ -66,6 +66,25 @@ export async function getAnalytics(prisma: PrismaClient, organizationId: string,
       failures.set(code, (failures.get(code) ?? 0) + 1);
     } else if (t.status === "CANCELLED") totals.cancelled++;
     else totals.scheduled++;
+    units.set(u.unitId, u);
+    platforms.set(p.platform, p);
+  }
+  // Publicações importadas das plataformas (feitas fora do sistema)
+  const externals = await prisma.externalPost.findMany({
+    where: { organizationId, publishedAt: { gte: from }, ...(Object.keys(accountFilter).length ? { account: accountFilter } : {}) },
+    include: { account: { select: { platform: true, unit: { select: { id: true, name: true, timezone: true } } } } },
+  });
+  for (const x of externals) {
+    const u = units.get(x.account.unit.id) ?? { unitId: x.account.unit.id, name: x.account.unit.name, published: 0, failed: 0, ...zero() };
+    const p = platforms.get(x.account.platform) ?? { platform: x.account.platform, published: 0, failed: 0, ...zero() };
+    totals.imported++; u.published++; p.published++;
+    seriesItems.push({ at: x.publishedAt, ok: true, timeZone: x.account.unit.timezone });
+    const m = { likes: x.likes, comments: x.comments, shares: x.shares, reach: x.reach, impressions: x.impressions, saves: x.saves, clicks: x.clicks };
+    add(engagement, m); add(u, m); add(p, m);
+    coverage.withMetrics++;
+    if (x.partial) coverage.partial++;
+    if (x.metricsFetchedAt && (!coverage.lastFetchedAt || x.metricsFetchedAt > coverage.lastFetchedAt)) coverage.lastFetchedAt = x.metricsFetchedAt;
+    top.push({ targetId: x.id, postId: null, source: "external", caption: x.caption, unit: x.account.unit.name, platform: x.account.platform, externalUrl: x.permalink, publishedAt: x.publishedAt, score: engagementScore(m), ...m });
     units.set(u.unitId, u);
     platforms.set(p.platform, p);
   }

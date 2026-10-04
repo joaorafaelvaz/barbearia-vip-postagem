@@ -1,9 +1,13 @@
 import type { AccountCredentials, InsightsFetcher, PostMetrics } from "@fsp/connectors";
+
+export type MetricsSource = "system" | "external";
 import { METRICS_WINDOW_DAYS, toPublishError, type Platform } from "@fsp/core";
 
 /** Publicação elegível para coleta: publicada, com id externo, conta ativa. */
 export interface MetricsTarget {
   id: string;
+  /** publicação do sistema (PostTarget) ou importada (ExternalPost) */
+  source: MetricsSource;
   externalPostId: string;
   account: {
     id: string;
@@ -18,8 +22,8 @@ export interface MetricsTarget {
 export interface MetricsRepository {
   /** Publicadas na janela, de uma organização ou de todas; menos atualizadas primeiro. */
   listTargets(opts: { organizationId?: string; since: Date; limit: number }): Promise<MetricsTarget[]>;
-  saveMetrics(postTargetId: string, m: PostMetrics): Promise<void>;
-  saveError(postTargetId: string, error: string): Promise<void>;
+  saveMetrics(target: MetricsTarget, m: PostMetrics): Promise<void>;
+  saveError(target: MetricsTarget, error: string): Promise<void>;
 }
 
 export interface MetricsDeps {
@@ -52,11 +56,11 @@ export async function collectMetrics(deps: MetricsDeps, organizationId?: string)
     try {
       const creds = await deps.credentials(t);
       const m = await deps.fetcherFor(t.account.platform).fetch(creds, t.externalPostId);
-      await deps.repo.saveMetrics(t.id, m);
+      await deps.repo.saveMetrics(t, m);
       summary.updated++;
     } catch (err) {
       const perr = toPublishError(err);
-      await deps.repo.saveError(t.id, perr.toPersisted());
+      await deps.repo.saveError(t, perr.toPersisted());
       summary.failed++;
       log("metrics failed", { postTargetId: t.id, code: perr.code });
       if (perr.code === "RATE_LIMITED") await sleep(Math.max(pause, (perr.retryAfterSeconds ?? 60) * 1000));

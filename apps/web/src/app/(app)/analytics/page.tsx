@@ -2,7 +2,7 @@ import Link from "next/link";
 import { FailuresTable, RankingTables, TopPostsTable } from "@/components/AnalyticsTables";
 import { DailyBarChart } from "@/components/BarChart";
 import { IconAlert, IconCheck, IconClock, IconInfo } from "@/components/Icons";
-import { RefreshMetricsButton } from "@/components/RefreshMetricsButton";
+import { AnalyticsActions } from "@/components/AnalyticsActions";
 import { formatCompact } from "@/lib/analytics-utils";
 import { allowedUnitIds } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -38,7 +38,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     <div className="stack lg">
       <div className="page-head">
         <div><h1>Analytics</h1><p className="lead">Desempenho das publicações e engajamento nas plataformas, por unidade.</p></div>
-        <RefreshMetricsButton />
+        <AnalyticsActions />
       </div>
 
       <div className="toolbar">
@@ -64,7 +64,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </div>
 
       <div className="kpis" aria-label="Publicações no período">
-        <div className="kpi ok"><span className="label"><IconCheck size="sm" /> Publicadas</span><span className="value">{data.totals.published}</span></div>
+        <div className="kpi ok"><span className="label"><IconCheck size="sm" /> Publicadas</span><span className="value">{data.totals.published + data.totals.imported}</span><small>{data.totals.published} pelo sistema · {data.totals.imported} importadas</small></div>
         <div className="kpi err"><span className="label"><IconAlert size="sm" /> Falhas</span><span className="value">{data.totals.failed}</span></div>
         <div className="kpi info"><span className="label"><IconClock size="sm" /> Taxa de sucesso</span><span className="value">{data.totals.successRate}%</span></div>
       </div>
@@ -77,7 +77,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       <section className="stack">
         <div className="row between">
           <h2 style={{ margin: 0 }}>Engajamento</h2>
-          <small>{cov.lastFetchedAt ? `Atualizado ${formatInTz(cov.lastFetchedAt, tz)} · ${cov.withMetrics} de ${data.totals.published} publicações com métricas` : "Ainda sem métricas coletadas"}</small>
+          <small>{cov.lastFetchedAt ? `Atualizado ${formatInTz(cov.lastFetchedAt, tz)} · ${cov.withMetrics} de ${data.totals.published + data.totals.imported} publicações com métricas` : "Ainda sem métricas coletadas"}</small>
         </div>
         <div className="kpis" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
           {cards.map(([label, v]) => <div className="kpi" key={label}><span className="label">{label}</span><span className="value">{formatCompact(v)}</span></div>)}

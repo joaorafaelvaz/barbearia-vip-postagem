@@ -43,3 +43,15 @@ export interface MetricsJobData {
   /** organização específica (atualização manual) ou undefined para todas */
   organizationId?: string;
 }
+
+/** Importação de publicações existentes nas plataformas (feitas fora do sistema). */
+export const IMPORT_JOB_NAME = "import-posts";
+export const IMPORT_SCHEDULER_ID = "import-posts-daily";
+export const IMPORT_EVERY_MS = 24 * 60 * 60_000;
+export const IMPORT_WINDOW_DAYS = 90;
+
+export interface ImportJobData {
+  organizationId?: string;
+  /** só uma conta (logo após conectar) */
+  connectedAccountId?: string;
+}
