@@ -24,4 +24,11 @@ docker image prune -f >/dev/null
 
 echo "==> Status"
 docker compose --env-file .env.production -f docker-compose.prod.yml ps
-curl -fsS -o /dev/null -w "web: HTTP %{http_code}\n" http://127.0.0.1:3022/login || echo "web ainda não respondeu; veja: docker compose -f docker-compose.prod.yml logs -f web"
+echo "==> Aguardando o web responder em 127.0.0.1:3022"
+for i in $(seq 1 30); do
+  code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3022/login || true)
+  if [ "$code" = "200" ]; then echo "web: HTTP 200 (ok)"; exit 0; fi
+  sleep 2
+done
+echo "web não respondeu 200 em 60s (último código: $code). Veja: docker compose -f docker-compose.prod.yml logs --tail 50 web"
+exit 1
