@@ -77,7 +77,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       <section className="stack">
         <div className="row between">
           <h2 style={{ margin: 0 }}>Engajamento</h2>
-          <small>{cov.lastFetchedAt ? `Atualizado ${formatInTz(cov.lastFetchedAt, tz)} · ${cov.withMetrics} de ${data.totals.published + data.totals.imported} publicações com métricas` : "Ainda sem métricas coletadas"}</small>
+          <small>{cov.lastFetchedAt ? `Atualizado ${formatInTz(cov.lastFetchedAt, tz)} · ${cov.withMetrics} de ${data.totals.published + data.totals.imported} publicações com métricas` : cov.withMetrics > 0 ? "Curtidas e comentários vieram da importação; alcance e impressões aparecem após \"Atualizar métricas\"" : "Ainda sem métricas coletadas"}</small>
         </div>
         <div className="kpis" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
           {cards.map(([label, v]) => <div className="kpi" key={label}><span className="label">{label}</span><span className="value">{formatCompact(v)}</span></div>)}

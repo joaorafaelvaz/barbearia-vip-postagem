@@ -30,3 +30,19 @@ describe("analytics-utils", () => {
     expect(engagementScore({ likes: 10, comments: 2, shares: 1, saves: 1 })).toBe(10 + 4 + 3 + 2);
   });
 });
+
+describe("getAnalytics agrega importadas por unidade sem corromper o agrupamento", () => {
+  it("soma curtidas de várias publicações da mesma unidade", async () => {
+    const { getAnalytics } = await import("./services/analytics");
+    const unit = { id: "u1", name: "Centro", timezone: "America/Sao_Paulo" };
+    const ext = (id: string, likes: number) => ({ id, platform: "INSTAGRAM", caption: id, likes, comments: 1, shares: 0, reach: 0, impressions: 0, saves: 0, clicks: 0, partial: true, permalink: null, metricsFetchedAt: null, publishedAt: new Date(), account: { platform: "INSTAGRAM", unit } });
+    const prisma = { postTarget: { findMany: async () => [] }, externalPost: { findMany: async () => [ext("a", 10), ext("b", 20), ext("c", 30)] } } as never;
+    const d = await getAnalytics(prisma, "org", null, { days: 30 });
+    expect(d.totals.imported).toBe(3);
+    expect(d.totals.successRate).toBe(100);
+    expect(d.byUnit).toHaveLength(1);
+    expect(d.byUnit[0]).toMatchObject({ name: "Centro", published: 3, failed: 0, likes: 60, comments: 3 });
+    expect(d.byPlatform[0]).toMatchObject({ platform: "INSTAGRAM", published: 3, likes: 60 });
+    expect(d.engagement.likes).toBe(60);
+  });
+});

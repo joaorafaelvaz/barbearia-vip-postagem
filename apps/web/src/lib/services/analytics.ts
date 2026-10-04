@@ -22,7 +22,9 @@ export interface AnalyticsData {
 }
 
 const zero = (): Engagement => ({ likes: 0, comments: 0, shares: 0, reach: 0, impressions: 0, saves: 0, clicks: 0 });
-const add = (a: Engagement, m: Engagement) => { for (const k of Object.keys(a) as Array<keyof Engagement>) a[k] += m[k]; };
+const ENGAGEMENT_KEYS: Array<keyof Engagement> = ["likes", "comments", "shares", "reach", "impressions", "saves", "clicks"];
+/** Soma só os campos de engajamento (o alvo pode ter outros campos, como nome e id). */
+const add = (a: Engagement, m: Engagement) => { for (const k of ENGAGEMENT_KEYS) a[k] += m[k]; };
 
 export async function getAnalytics(prisma: PrismaClient, organizationId: string, allowed: string[] | null, f: AnalyticsFilters, timeZone = "America/Sao_Paulo"): Promise<AnalyticsData> {
   const to = new Date();
@@ -88,7 +90,7 @@ export async function getAnalytics(prisma: PrismaClient, organizationId: string,
     units.set(u.unitId, u);
     platforms.set(p.platform, p);
   }
-  totals.successRate = successRate(totals.published, totals.failed);
+  totals.successRate = successRate(totals.published + totals.imported, totals.failed);
 
   return {
     range: { from, to, days: f.days },
