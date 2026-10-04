@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { IconDashboard, IconLogout, IconMegaphone, IconPlus, IconStore, IconUser, IconUsers } from "./Icons";
+import { IconChart, IconDashboard, IconLogout, IconMegaphone, IconPlus, IconStore, IconUser, IconUsers } from "./Icons";
 import { ThemeToggle } from "./ThemeToggle";
 import { Sidebar, SidebarBody, SidebarLink, type Links } from "./ui/sidebar";
 
@@ -19,6 +19,7 @@ export function AppSidebar({ orgName, email, name, roleLabel, isAdmin }: AppSide
   const links: Array<Links & { exact?: boolean }> = [
     { label: "Painel", href: "/", icon: <IconDashboard />, exact: true },
     { label: "Nova postagem", href: "/novo", icon: <IconPlus /> },
+    { label: "Analytics", href: "/analytics", icon: <IconChart /> },
     { label: "Unidades e contas", href: "/unidades", icon: <IconStore /> },
     ...(isAdmin ? [{ label: "Usuários", href: "/usuarios", icon: <IconUsers /> }] : []),
     { label: "Minha conta", href: "/conta", icon: <IconUser /> },

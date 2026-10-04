@@ -31,3 +31,15 @@ export type TargetStatus = "SCHEDULED" | "PUBLISHING" | "PUBLISHED" | "FAILED" |
 export interface PublishJobData {
   postTargetId: string;
 }
+
+/** Coleta periódica de métricas de engajamento (mesma fila, outro nome de job). */
+export const METRICS_JOB_NAME = "collect-metrics";
+export const METRICS_SCHEDULER_ID = "collect-metrics-every-6h";
+export const METRICS_EVERY_MS = 6 * 60 * 60_000;
+/** Janela: publicações dos últimos N dias têm métricas atualizadas. */
+export const METRICS_WINDOW_DAYS = 30;
+
+export interface MetricsJobData {
+  /** organização específica (atualização manual) ou undefined para todas */
+  organizationId?: string;
+}

@@ -2,13 +2,14 @@ import { config as loadEnv } from "dotenv";
 import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
-import { createPublisher, refreshGoogleAccessToken } from "@fsp/connectors";
-import { PUBLISH_QUEUE_NAME, TokenCipher, type PublishJobData } from "@fsp/core";
+import { createInsightsFetcher, createPublisher, refreshGoogleAccessToken } from "@fsp/connectors";
+import { METRICS_JOB_NAME, PUBLISH_QUEUE_NAME, TokenCipher, type MetricsJobData, type PublishJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
-import { createPublishQueue, createRedisConnection, requeuePublish } from "@fsp/queue";
+import { createPublishQueue, createRedisConnection, ensureMetricsScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
 import { Worker } from "bullmq";
-import { processTarget, type ProcessorDeps } from "./processor.js";
-import { prismaTargetRepository } from "./repository.js";
+import { collectMetrics } from "./metrics.js";
+import { processTarget, resolveAccessToken, type ProcessorDeps } from "./processor.js";
+import { prismaMetricsRepository, prismaTargetRepository } from "./repository.js";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -42,14 +43,31 @@ async function main(): Promise<void> {
     log: (msg, meta) => console.log(JSON.stringify({ ts: new Date().toISOString(), msg, ...meta })),
   };
 
+  const metricsRepo = prismaMetricsRepository(prisma);
   const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 5);
-  const worker = new Worker<PublishJobData>(
+  const worker = new Worker<AppJobData>(
     PUBLISH_QUEUE_NAME,
     async (job) => {
-      const outcome = await processTarget(deps, job.data.postTargetId);
+      if (job.name === METRICS_JOB_NAME) {
+        const data = job.data as MetricsJobData;
+        return collectMetrics(
+          {
+            repo: metricsRepo,
+            fetcherFor: (platform) => createInsightsFetcher(platform),
+            credentials: async (t) => ({
+              platform: t.account.platform,
+              externalId: t.account.externalId,
+              accessToken: await resolveAccessToken(deps, { account: { ...t.account, organizationId: "", isActive: true } }, new Date()),
+            }),
+            log: deps.log,
+          },
+          data.organizationId,
+        );
+      }
+      const outcome = await processTarget(deps, (job.data as PublishJobData).postTargetId);
       if (outcome.outcome === "retry") {
         // Re-agenda com o backoff calculado. O job atual termina com sucesso.
-        await requeuePublish(queue, job.data.postTargetId, new Date(Date.now() + outcome.delayMs));
+        await requeuePublish(queue, (job.data as PublishJobData).postTargetId, new Date(Date.now() + outcome.delayMs));
       }
       return outcome;
     },
@@ -61,7 +79,8 @@ async function main(): Promise<void> {
   });
   worker.on("error", (err) => console.error("worker error", err.message));
 
-  console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency }));
+  await ensureMetricsScheduler(queue);
+  console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, metricsScheduler: "6h" }));
 
   const shutdown = async () => {
     console.log("shutting down worker...");

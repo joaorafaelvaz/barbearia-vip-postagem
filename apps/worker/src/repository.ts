@@ -1,6 +1,8 @@
 import type { PrismaClient } from "@fsp/db";
 import type { MediaKind, Platform } from "@fsp/core";
+import type { PostMetrics } from "@fsp/connectors";
 import type { TargetRecord, TargetRepository } from "./processor.js";
+import type { MetricsRepository, MetricsTarget } from "./metrics.js";
 
 /** Implementação Prisma do repositório usado pelo processador. */
 export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
@@ -69,6 +71,46 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
 
     async updateAccountToken(accountId, accessTokenEnc, expiresAt) {
       await prisma.connectedAccount.update({ where: { id: accountId }, data: { accessTokenEnc, tokenExpiresAt: expiresAt } });
+    },
+  };
+}
+
+/** Implementação Prisma do repositório de métricas. */
+export function prismaMetricsRepository(prisma: PrismaClient): MetricsRepository {
+  return {
+    async listTargets({ organizationId, since, limit }): Promise<MetricsTarget[]> {
+      const rows = await prisma.postTarget.findMany({
+        where: {
+          status: "PUBLISHED",
+          externalPostId: { not: null },
+          publishedAt: { gte: since },
+          account: { isActive: true },
+          ...(organizationId ? { organizationId } : {}),
+        },
+        orderBy: [{ publishedAt: "asc" }],
+        take: limit,
+        select: {
+          id: true,
+          externalPostId: true,
+          account: { select: { id: true, platform: true, externalId: true, accessTokenEnc: true, refreshTokenEnc: true, tokenExpiresAt: true } },
+        },
+      });
+      return rows.map((t) => ({
+        id: t.id,
+        externalPostId: t.externalPostId as string,
+        account: { ...t.account, platform: t.account.platform as Platform },
+      }));
+    },
+    async saveMetrics(postTargetId, m: PostMetrics) {
+      const data = { likes: m.likes, comments: m.comments, shares: m.shares, reach: m.reach, impressions: m.impressions, saves: m.saves, clicks: m.clicks, partial: m.partial, lastError: m.note ?? null, fetchedAt: new Date() };
+      await prisma.targetMetrics.upsert({ where: { postTargetId }, create: { postTargetId, ...data }, update: data });
+    },
+    async saveError(postTargetId, error) {
+      await prisma.targetMetrics.upsert({
+        where: { postTargetId },
+        create: { postTargetId, partial: true, lastError: error },
+        update: { partial: true, lastError: error, fetchedAt: new Date() },
+      });
     },
   };
 }

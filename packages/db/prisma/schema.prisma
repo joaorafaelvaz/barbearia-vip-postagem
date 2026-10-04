@@ -188,8 +188,30 @@ model PostTarget {
 
   post    Post             @relation(fields: [postId], references: [id], onDelete: Cascade)
   account ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+  metrics TargetMetrics?
 
   @@unique([postId, connectedAccountId])
   @@index([status, scheduledAt])
   @@index([organizationId, scheduledAt])
+}
+
+/// Última leitura de engajamento de uma publicação (coletada periodicamente pelo worker).
+model TargetMetrics {
+  postTargetId String   @id
+  likes        Int      @default(0)
+  comments     Int      @default(0)
+  shares       Int      @default(0)
+  reach        Int      @default(0)
+  impressions  Int      @default(0)
+  saves        Int      @default(0)
+  clicks       Int      @default(0)
+  /// métricas que a plataforma não forneceu (ex.: sem permissão read_insights)
+  partial      Boolean  @default(false)
+  lastError    String?
+  fetchedAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  target PostTarget @relation(fields: [postTargetId], references: [id], onDelete: Cascade)
+
+  @@index([fetchedAt])
 }

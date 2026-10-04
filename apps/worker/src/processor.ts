@@ -107,7 +107,8 @@ export async function processTarget(deps: ProcessorDeps, postTargetId: string): 
   }
 }
 
-async function resolveAccessToken(deps: ProcessorDeps, target: TargetRecord, now: Date): Promise<string> {
+/** Token em claro da conta; renova o do Google quando está perto de expirar. Também usado pela coleta de métricas. */
+export async function resolveAccessToken(deps: Pick<ProcessorDeps, "cipher" | "google" | "repo">, target: Pick<TargetRecord, "account">, now: Date): Promise<string> {
   const { account } = target;
   const current = deps.cipher.decrypt(account.accessTokenEnc);
   if (account.platform !== "GOOGLE_BUSINESS_PROFILE") return current;

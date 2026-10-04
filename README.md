@@ -65,7 +65,8 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
    `https://SEU-DOMINIO/api/oauth/meta/callback` (em dev: `http://localhost:3022/api/oauth/meta/callback`).
 3. Copie `App ID` e `App Secret` para `META_APP_ID` e `META_APP_SECRET`.
 4. Em **App Review**, solicite as permissões `pages_show_list`, `pages_read_engagement`,
-   `pages_manage_posts`, `instagram_basic`, `instagram_content_publish`, `business_management`.
+   `pages_manage_posts`, `read_insights`, `instagram_basic`, `instagram_content_publish`,
+   `instagram_manage_insights`, `business_management`.
    Enquanto o app está em modo de desenvolvimento, só usuários com papel no app
    (admin/desenvolvedor/testador) conseguem conectar contas.
 5. Cada unidade precisa de uma **Facebook Page** com um **Instagram Business/Creator**
@@ -134,6 +135,22 @@ web e worker. Logs: `docker compose -f docker-compose.prod.yml logs -f web worke
 Sem S3 configurado, as mídias ficam em `/opt/postagem/data/uploads` (volume do compose) e o
 Nginx as serve em `/uploads/`. Isso é obrigatório porque Meta e Google baixam a mídia por URL
 pública. Para usar S3/R2, preencha as variáveis `S3_*`. O limite de upload no Nginx é 320MB.
+
+## Analytics
+
+O menu **Analytics** mostra, por período (7, 30 ou 90 dias), unidade e plataforma: publicadas,
+falhas e taxa de sucesso; gráfico de publicações por dia; engajamento (curtidas, comentários,
+compartilhamentos, salvamentos, alcance, impressões, cliques); ranking por unidade e por
+plataforma; publicações com mais engajamento; e motivos das falhas.
+
+O engajamento é coletado pelo worker a cada 6 horas para publicações dos últimos 30 dias
+(tabela `TargetMetrics`), e sob demanda pelo botão "Atualizar métricas" (no máximo uma coleta
+por minuto por organização). Curtidas e comentários vêm com as permissões básicas; alcance,
+impressões e salvamentos exigem `read_insights` (Facebook) e `instagram_manage_insights`
+(Instagram), já incluídos no OAuth: contas conectadas antes dessa versão precisam ser
+reconectadas para liberar essas métricas. No Google Business Profile, as métricas de post
+dependem da API `localPosts:reportInsights`; quando ela não responde, a publicação fica marcada
+como parcial sem interromper a coleta.
 
 ## Usuários e permissões
 
