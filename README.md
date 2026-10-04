@@ -65,7 +65,7 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
    `https://SEU-DOMINIO/api/oauth/meta/callback` (em dev: `http://localhost:3022/api/oauth/meta/callback`).
 3. Copie `App ID` e `App Secret` para `META_APP_ID` e `META_APP_SECRET`.
 4. Em **App Review**, solicite as permissões `pages_show_list`, `pages_read_engagement`,
-   `pages_manage_posts`, `publish_video`, `instagram_basic`, `instagram_content_publish`, `business_management`.
+   `pages_manage_posts`, `instagram_basic`, `instagram_content_publish`, `business_management`.
    Enquanto o app está em modo de desenvolvimento, só usuários com papel no app
    (admin/desenvolvedor/testador) conseguem conectar contas.
 5. Cada unidade precisa de uma **Facebook Page** com um **Instagram Business/Creator**
@@ -86,7 +86,7 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
 
 Imagens: JPG, PNG, GIF (o Instagram só aceita JPG). Vídeo: MP4 ou MOV, um por postagem, sem
 misturar com imagens. No Instagram o vídeo é publicado como **Reels** (3s a 15min); no Facebook,
-como vídeo da Page (permissão `publish_video`). O **Google Business Profile não aceita vídeo em
+como vídeo da Page (coberto por `pages_manage_posts`). O **Google Business Profile não aceita vídeo em
 postagens via API**, então a composição bloqueia vídeo quando há conta do Google selecionada.
 Duração e dimensões do vídeo são lidas no navegador no momento do upload; o servidor não
 decodifica vídeo. Limite de upload: 10MB por imagem, 300MB por vídeo.

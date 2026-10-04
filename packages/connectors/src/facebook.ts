@@ -11,7 +11,7 @@ export const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
  * - 1 imagem: POST /{page-id}/photos {url, message}
  * - N imagens: POST /{page-id}/photos {url, published=false} para cada,
  *   depois POST /{page-id}/feed {message, attached_media[i]={media_fbid}}
- * - Vídeo: POST /{page-id}/videos {file_url, description} (exige publish_video)
+ * - Vídeo: POST /{page-id}/videos {file_url, description}
  */
 export class FacebookPagePublisher implements Publisher {
   readonly platform = "FACEBOOK_PAGE" as const;

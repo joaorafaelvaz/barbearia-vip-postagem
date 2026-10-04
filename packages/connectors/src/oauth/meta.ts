@@ -2,12 +2,14 @@ import { GRAPH_BASE } from "../facebook.js";
 import { defaultFetch, mapMetaError, readJson, safeFetch } from "../http.js";
 import type { FetchLike } from "../types.js";
 
-/** Permissões necessárias para publicar em Pages e Instagram (sujeitas a App Review). */
+/**
+ * Permissões necessárias para publicar em Pages e Instagram (sujeitas a App Review).
+ * Vídeo em Página usa pages_manage_posts; publish_video não é aceito no Login para Empresas.
+ */
 export const META_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
   "pages_manage_posts",
-  "publish_video",
   "instagram_basic",
   "instagram_content_publish",
   "business_management",
