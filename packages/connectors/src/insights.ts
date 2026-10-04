@@ -33,22 +33,48 @@ async function metaGet(f: FetchLike, url: string): Promise<Record<string, unknow
   return (body ?? {}) as Record<string, unknown>;
 }
 
-/** Lê `/{id}/insights` e devolve {metric: valor}; erros de permissão viram `undefined` (parcial). */
-async function metaInsights(f: FetchLike, id: string, metrics: string[], token: string): Promise<Record<string, number> | undefined> {
-  try {
-    const body = await metaGet(f, `${GRAPH_BASE}/${id}/insights?metric=${metrics.join(",")}&access_token=${encodeURIComponent(token)}`);
-    const out: Record<string, number> = {};
-    for (const row of (body.data as Array<Record<string, unknown>> | undefined) ?? []) {
-      const values = row.values as Array<{ value: unknown }> | undefined;
-      const v = values?.[0]?.value;
-      out[String(row.name)] =
-        typeof v === "object" && v !== null ? Object.values(v as Record<string, number>).reduce((a, b) => a + num(b), 0) : num(v);
+interface InsightsResult {
+  values: Record<string, number>;
+  /** métricas pedidas que a API não devolveu (não suportadas para esta mídia/versão) */
+  missing: string[];
+  /** mensagem da API quando a leitura falhou por permissão/validação */
+  error?: string;
+}
+
+/**
+ * Lê `/{id}/insights`. Se a API recusar alguma métrica (erro 100 citando o nome), remove-a e tenta
+ * de novo; erros de permissão encerram com `error`. Nunca lança por permissão/validação.
+ */
+async function metaInsights(f: FetchLike, id: string, metrics: string[], token: string): Promise<InsightsResult> {
+  let wanted = [...metrics];
+  const missing: string[] = [];
+  for (let attempt = 0; attempt < 4 && wanted.length > 0; attempt++) {
+    try {
+      const body = await metaGet(f, `${GRAPH_BASE}/${id}/insights?metric=${wanted.join(",")}&access_token=${encodeURIComponent(token)}`);
+      const values: Record<string, number> = {};
+      for (const row of (body.data as Array<Record<string, unknown>> | undefined) ?? []) {
+        const vals = row.values as Array<{ value: unknown }> | undefined;
+        const v = vals?.[0]?.value;
+        values[String(row.name)] =
+          typeof v === "object" && v !== null ? Object.values(v as Record<string, number>).reduce((a, b) => a + num(b), 0) : num(v);
+      }
+      for (const m of wanted) if (!(m in values)) missing.push(m);
+      return { values, missing };
+    } catch (e) {
+      if (!(e instanceof PublishError)) throw e;
+      if (e.code === "VALIDATION") {
+        const rejected = wanted.filter((m) => new RegExp("\b" + m + "\b", "i").test(e.message));
+        if (rejected.length > 0) {
+          missing.push(...rejected);
+          wanted = wanted.filter((m) => !rejected.includes(m));
+          continue;
+        }
+      }
+      if (e.code === "PERMISSION_DENIED" || e.code === "VALIDATION") return { values: {}, missing: [...missing, ...wanted], error: e.message };
+      throw e;
     }
-    return out;
-  } catch (e) {
-    if (e instanceof PublishError && (e.code === "PERMISSION_DENIED" || e.code === "VALIDATION")) return undefined;
-    throw e;
   }
+  return { values: {}, missing };
 }
 
 /** Facebook Page post: curtidas/comentários/compartilhamentos pelos campos; alcance e impressões por insights (read_insights). */
@@ -67,13 +93,15 @@ export class FacebookInsights implements InsightsFetcher {
     m.comments = num((body.comments as { summary?: { total_count?: unknown } })?.summary?.total_count);
     m.shares = num((body.shares as { count?: unknown })?.count);
     const ins = await metaInsights(this.http, postId, ["post_impressions", "post_impressions_unique", "post_clicks"], token);
-    if (ins) {
-      m.impressions = ins.post_impressions ?? 0;
-      m.reach = ins.post_impressions_unique ?? 0;
-      m.clicks = ins.post_clicks ?? 0;
-    } else {
+    m.impressions = ins.values.post_impressions ?? 0;
+    m.reach = ins.values.post_impressions_unique ?? 0;
+    m.clicks = ins.values.post_clicks ?? 0;
+    if (ins.error) {
       m.partial = true;
-      m.note = "Alcance e impressões exigem a permissão read_insights (reconecte a conta).";
+      m.note = "Insights do Facebook indisponíveis: " + ins.error + " (verifique a permissão read_insights)";
+    } else if (ins.missing.includes("post_impressions_unique")) {
+      m.partial = true;
+      m.note = "Métricas não fornecidas pela API: " + ins.missing.join(", ");
     }
     return m;
   }
@@ -92,16 +120,19 @@ export class InstagramInsights implements InsightsFetcher {
     const body = await metaGet(this.http, `${GRAPH_BASE}/${mediaId}?fields=like_count,comments_count,media_product_type&access_token=${encodeURIComponent(token)}`);
     m.likes = num(body.like_count);
     m.comments = num(body.comments_count);
-    const reels = body.media_product_type === "REELS";
-    const ins = await metaInsights(this.http, mediaId, reels ? ["reach", "saved", "shares", "plays"] : ["reach", "impressions", "saved", "shares"], token);
-    if (ins) {
-      m.reach = ins.reach ?? 0;
-      m.impressions = ins.impressions ?? ins.plays ?? 0;
-      m.saves = ins.saved ?? 0;
-      m.shares = ins.shares ?? 0;
-    } else {
+    void body.media_product_type;
+    // v22+: "views" substitui impressions (e plays nos Reels); a lista é reduzida se a API recusar alguma.
+    const ins = await metaInsights(this.http, mediaId, ["reach", "views", "saved", "shares"], token);
+    m.reach = ins.values.reach ?? 0;
+    m.impressions = ins.values.views ?? ins.values.impressions ?? 0;
+    m.saves = ins.values.saved ?? 0;
+    m.shares = ins.values.shares ?? 0;
+    if (ins.error) {
       m.partial = true;
-      m.note = "Alcance, impressões e salvamentos exigem instagram_manage_insights (reconecte a conta).";
+      m.note = "Insights do Instagram indisponíveis: " + ins.error + " (verifique a permissão instagram_manage_insights)";
+    } else if (ins.missing.includes("reach")) {
+      m.partial = true;
+      m.note = "Métricas não fornecidas pela API: " + ins.missing.join(", ");
     }
     return m;
   }

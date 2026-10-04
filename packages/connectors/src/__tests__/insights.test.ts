@@ -27,21 +27,37 @@ describe("insights", () => {
     expect(m.likes).toBe(7);
     expect(m.partial).toBe(true);
     expect(m.note).toMatch(/read_insights/);
+    expect(m.note).toMatch(/requires read_insights/); // mensagem real da API
   });
 
-  it("Instagram reels: like/comments + reach, plays, saved", async () => {
+  it("Instagram: like/comments + reach, views, saved, shares (v26)", async () => {
     const { fetch, calls } = fakeFetch([
       () => ({ json: { like_count: 40, comments_count: 5, media_product_type: "REELS" } }),
       () => ({ json: { data: [
         { name: "reach", values: [{ value: 900 }] },
+        { name: "views", values: [{ value: 1200 }] },
         { name: "saved", values: [{ value: 11 }] },
         { name: "shares", values: [{ value: 4 }] },
-        { name: "plays", values: [{ value: 1200 }] },
       ] } }),
     ]);
     const m = await new InstagramInsights({ fetch }).fetch(account.ig, "m1");
     expect(m).toMatchObject({ likes: 40, comments: 5, reach: 900, saves: 11, shares: 4, impressions: 1200, partial: false });
-    expect(calls[1]?.url).toContain("metric=reach,saved,shares,plays");
+    expect(calls[1]?.url).toContain("metric=reach,views,saved,shares");
+  });
+
+  it("Instagram: métrica recusada pela API é removida e a leitura continua", async () => {
+    const { fetch, calls } = fakeFetch([
+      () => ({ json: { like_count: 1, comments_count: 0, media_type: "IMAGE" } }),
+      () => ({ status: 400, json: { error: { code: 100, message: "(#100) The following metrics (shares) are not supported for this media" } } }),
+      () => ({ json: { data: [
+        { name: "reach", values: [{ value: 50 }] },
+        { name: "views", values: [{ value: 70 }] },
+        { name: "saved", values: [{ value: 2 }] },
+      ] } }),
+    ]);
+    const m = await new InstagramInsights({ fetch }).fetch(account.ig, "m2");
+    expect(m).toMatchObject({ reach: 50, impressions: 70, saves: 2, shares: 0, partial: false });
+    expect(calls[2]?.url).toContain("metric=reach,views,saved&");
   });
 
   it("Google: visualizações e cliques do localPost", async () => {
