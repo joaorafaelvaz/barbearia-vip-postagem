@@ -1,10 +1,10 @@
-import { IMPORT_EVERY_MS, IMPORT_JOB_NAME, IMPORT_SCHEDULER_ID, METRICS_EVERY_MS, METRICS_JOB_NAME, METRICS_SCHEDULER_ID, PUBLISH_QUEUE_NAME, delayUntil, publishJobId, type ImportJobData, type MetricsJobData, type PublishJobData } from "@fsp/core";
+import { RECONCILE_EVERY_MS, RECONCILE_JOB_NAME, RECONCILE_SCHEDULER_ID, IMPORT_EVERY_MS, IMPORT_JOB_NAME, IMPORT_SCHEDULER_ID, METRICS_EVERY_MS, METRICS_JOB_NAME, METRICS_SCHEDULER_ID, PUBLISH_QUEUE_NAME, delayUntil, publishJobId, type ImportJobData, type MetricsJobData, type PublishJobData } from "@fsp/core";
 import { Queue, type JobsOptions } from "bullmq";
 import { Redis } from "ioredis";
 
 export { PUBLISH_QUEUE_NAME } from "@fsp/core";
 export type { PublishJobData, MetricsJobData, ImportJobData } from "@fsp/core";
-export { METRICS_JOB_NAME, IMPORT_JOB_NAME } from "@fsp/core";
+export { METRICS_JOB_NAME, IMPORT_JOB_NAME, RECONCILE_JOB_NAME } from "@fsp/core";
 
 export function createRedisConnection(url: string = process.env.REDIS_URL ?? "redis://localhost:6379"): Redis {
   return new Redis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
@@ -88,4 +88,14 @@ export async function enqueueImportNow(queue: PublishQueueLike, data: ImportJobD
   const slot = Math.floor(Date.now() / 60_000);
   const key = data.connectedAccountId ?? data.organizationId ?? "all";
   await queue.add(IMPORT_JOB_NAME, data as never, { jobId: `import-${key}-${slot}`, attempts: 1, removeOnComplete: true });
+}
+
+/** Agendador da reconciliação (idempotente). */
+export async function ensureReconcileScheduler(queue: Queue<AppJobData>): Promise<void> {
+  await queue.upsertJobScheduler(RECONCILE_SCHEDULER_ID, { every: RECONCILE_EVERY_MS }, { name: RECONCILE_JOB_NAME, data: {} });
+}
+
+/** Há job (pendente ou ativo) para o target? */
+export async function hasPublishJob(queue: PublishQueueLike, postTargetId: string): Promise<boolean> {
+  return Boolean(await queue.getJob(publishJobId(postTargetId)));
 }

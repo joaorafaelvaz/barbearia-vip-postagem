@@ -3,14 +3,15 @@ import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
 import { createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken } from "@fsp/connectors";
-import { IMPORT_JOB_NAME, METRICS_JOB_NAME, PUBLISH_QUEUE_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PublishJobData } from "@fsp/core";
+import { IMPORT_JOB_NAME, METRICS_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PublishJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
-import { createPublishQueue, createRedisConnection, ensureImportScheduler, ensureMetricsScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
+import { createPublishQueue, createRedisConnection, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
 import { Worker } from "bullmq";
 import { importPosts } from "./imports.js";
 import { collectMetrics } from "./metrics.js";
+import { reconcileTargets } from "./reconcile.js";
 import { processTarget, resolveAccessToken, type ProcessorDeps } from "./processor.js";
-import { prismaImportRepository, prismaMetricsRepository, prismaTargetRepository } from "./repository.js";
+import { prismaImportRepository, prismaMetricsRepository, prismaReconcileRepository, prismaTargetRepository } from "./repository.js";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -46,10 +47,14 @@ async function main(): Promise<void> {
 
   const metricsRepo = prismaMetricsRepository(prisma);
   const importRepo = prismaImportRepository(prisma);
+  const reconcileRepo = prismaReconcileRepository(prisma);
   const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 5);
   const worker = new Worker<AppJobData>(
     PUBLISH_QUEUE_NAME,
     async (job) => {
+      if (job.name === RECONCILE_JOB_NAME) {
+        return reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
+      }
       if (job.name === IMPORT_JOB_NAME) {
         const data = job.data as ImportJobData;
         return importPosts(
@@ -99,6 +104,9 @@ async function main(): Promise<void> {
 
   await ensureMetricsScheduler(queue);
   await ensureImportScheduler(queue);
+  await ensureReconcileScheduler(queue);
+  // Reconcilia já na subida: retoma o que ficou preso enquanto o worker esteve fora.
+  await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
   console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, metricsScheduler: "6h" }));
 
   const shutdown = async () => {

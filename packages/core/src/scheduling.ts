@@ -55,3 +55,12 @@ export interface ImportJobData {
   /** só uma conta (logo após conectar) */
   connectedAccountId?: string;
 }
+
+/** Reconciliação: retoma publicações presas em PUBLISHING e reenfileira agendamentos vencidos sem job. */
+export const RECONCILE_JOB_NAME = "reconcile-targets";
+export const RECONCILE_SCHEDULER_ID = "reconcile-every-5min";
+export const RECONCILE_EVERY_MS = 5 * 60_000;
+/** PUBLISHING há mais que isso é considerado preso (o worker caiu ou o job falhou sem tratamento). */
+export const STALE_PUBLISHING_MS = 15 * 60_000;
+/** SCHEDULED vencido há mais que isso sem job na fila é reenfileirado. */
+export const OVERDUE_GRACE_MS = 2 * 60_000;

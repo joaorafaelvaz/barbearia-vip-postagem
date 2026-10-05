@@ -5,6 +5,7 @@ import type { TargetRecord, TargetRepository } from "./processor.js";
 import type { ExternalPostSummary } from "@fsp/connectors";
 import type { ImportAccount, ImportRepository } from "./imports.js";
 import type { MetricsRepository, MetricsTarget } from "./metrics.js";
+import type { ReconcileRepository } from "./reconcile.js";
 
 /** Implementação Prisma do repositório usado pelo processador. */
 export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
@@ -167,6 +168,21 @@ export function prismaImportRepository(prisma: PrismaClient): ImportRepository {
         }
       }
       return created;
+    },
+  };
+}
+
+/** Implementação Prisma do repositório de reconciliação. */
+export function prismaReconcileRepository(prisma: PrismaClient): ReconcileRepository {
+  return {
+    async listStalePublishing(before) {
+      return prisma.postTarget.findMany({ where: { status: "PUBLISHING", updatedAt: { lt: before } }, select: { id: true }, take: 500 });
+    },
+    async listOverdueScheduled(before) {
+      return prisma.postTarget.findMany({ where: { status: "SCHEDULED", scheduledAt: { lt: before } }, select: { id: true, scheduledAt: true }, take: 500 });
+    },
+    async resetToScheduled(id, note) {
+      await prisma.postTarget.update({ where: { id }, data: { status: "SCHEDULED", lastError: note } });
     },
   };
 }
