@@ -1,5 +1,5 @@
 import { PublishError } from "@fsp/core";
-import { GRAPH_BASE } from "./facebook.js";
+import { GRAPH_BASE } from "./meta-config.js";
 import { defaultFetch, defaultSleep, formBody, mapMetaError, readJson, safeFetch } from "./http.js";
 import { splitMedia, type ConnectorOptions, type PublishInput, type PublishResult, type Publisher } from "./types.js";
 

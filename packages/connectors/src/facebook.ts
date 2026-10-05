@@ -3,8 +3,8 @@ import { publishFacebookPhotoStory, publishFacebookVideoPhased } from "./faceboo
 import { defaultFetch, formBody, mapMetaError, readJson, safeFetch } from "./http.js";
 import { splitMedia, type ConnectorOptions, type PublishInput, type PublishResult, type Publisher } from "./types.js";
 
-export const GRAPH_VERSION = process.env.META_GRAPH_VERSION ?? "v26.0";
-export const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
+import { GRAPH_BASE } from "./meta-config.js";
+export { GRAPH_BASE, GRAPH_VERSION } from "./meta-config.js";
 
 /**
  * Publica em uma Facebook Page usando Page Access Token.

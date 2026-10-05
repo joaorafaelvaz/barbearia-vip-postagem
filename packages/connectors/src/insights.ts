@@ -1,5 +1,5 @@
 import { PublishError, type Platform } from "@fsp/core";
-import { GRAPH_BASE } from "./facebook.js";
+import { GRAPH_BASE } from "./meta-config.js";
 import { GBP_POSTS_BASE } from "./google-business.js";
 import { defaultFetch, mapGoogleError, mapMetaError, readJson, safeFetch } from "./http.js";
 import type { AccountCredentials, ConnectorOptions, FetchLike } from "./types.js";

@@ -29,8 +29,21 @@ docker compose --env-file .env.production -f docker-compose.prod.yml ps
 echo "==> Aguardando o web responder em 127.0.0.1:3022"
 for i in $(seq 1 30); do
   code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3022/login || true)
-  if [ "$code" = "200" ]; then echo "web: HTTP 200 (ok)"; exit 0; fi
+  if [ "$code" = "200" ]; then echo "web: HTTP 200 (ok)"; break; fi
   sleep 2
 done
-echo "web não respondeu 200 em 60s (último código: $code). Veja: docker compose -f docker-compose.prod.yml logs --tail 50 web"
+if [ "$code" != "200" ]; then
+  echo "web não respondeu 200 em 60s (último código: $code). Veja: docker compose -f docker-compose.prod.yml logs --tail 50 web"
+  exit 1
+fi
+
+echo "==> Aguardando o worker iniciar"
+for i in $(seq 1 30); do
+  if docker compose --env-file .env.production -f docker-compose.prod.yml logs --since 2m worker 2>/dev/null | grep -q "worker started"; then echo "worker: iniciado (ok)"; exit 0; fi
+  if docker compose --env-file .env.production -f docker-compose.prod.yml logs --since 2m worker 2>/dev/null | grep -qiE "ReferenceError|TypeError|Cannot find module"; then
+    echo "worker falhou ao iniciar:"; docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail 20 worker; exit 1
+  fi
+  sleep 2
+done
+echo "worker não registrou início em 60s. Veja: docker compose -f docker-compose.prod.yml logs --tail 50 worker"
 exit 1

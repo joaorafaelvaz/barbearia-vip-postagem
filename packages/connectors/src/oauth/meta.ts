@@ -1,4 +1,4 @@
-import { GRAPH_BASE } from "../facebook.js";
+import { GRAPH_BASE } from "../meta-config.js";
 import { defaultFetch, mapMetaError, readJson, safeFetch } from "../http.js";
 import type { FetchLike } from "../types.js";
 

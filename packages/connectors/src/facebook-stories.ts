@@ -1,5 +1,5 @@
 import { PublishError } from "@fsp/core";
-import { GRAPH_BASE, GRAPH_VERSION } from "./facebook.js";
+import { GRAPH_BASE } from "./meta-config.js";
 import { formBody, mapMetaError, readJson, safeFetch } from "./http.js";
 import type { FetchLike, PublishResult } from "./types.js";
 
@@ -10,7 +10,7 @@ import type { FetchLike, PublishResult } from "./types.js";
  * 3. POST /{page-id}/video_stories|video_reels?upload_phase=finish&video_id=...
  * Story de foto: foto não publicada em /{page-id}/photos e depois POST /{page-id}/photo_stories.
  */
-export const RUPLOAD_BASE = `https://rupload.facebook.com/video-upload/${GRAPH_VERSION}`;
+export { RUPLOAD_BASE } from "./meta-config.js";
 
 type Kind = "video_stories" | "video_reels";
 
