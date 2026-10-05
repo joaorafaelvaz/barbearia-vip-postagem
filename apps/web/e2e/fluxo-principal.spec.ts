@@ -51,8 +51,14 @@ test.describe("fluxo principal", () => {
     // painel do mês do agendamento mostra a unidade e permite cancelar
     await page.goto(`/?mes=${local.slice(0, 7)}`);
     await expect(page.getByRole("cell", { name: "Unidade Norte" }).first()).toBeVisible();
-    await page.locator("button:has-text('Cancelar')").first().click();
+    await page.locator("tbody button:has-text('Cancelar')").first().click();
     await expect(page.locator(".badge.CANCELLED").first()).toBeVisible();
+
+    // "Re-tentar todas" do mês reenfileira a cancelada (confirmação aceita)
+    page.once("dialog", (d) => d.accept());
+    await page.click("button:has-text('Re-tentar todas (1)')");
+    await expect(page.locator(".badge.CANCELLED")).toHaveCount(0);
+    await expect(page.locator(".badge.SCHEDULED")).toHaveCount(2);
   });
 
   test("rota protegida redireciona para login", async ({ page }) => {

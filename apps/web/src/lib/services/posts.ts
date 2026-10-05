@@ -111,7 +111,7 @@ export async function retryTarget(deps: { prisma: PrismaClient; queue: PublishQu
   if (!target) throw new HttpError(404, "Publicação não encontrada.");
   if (target.status === "PUBLISHED") throw new HttpError(409, "Já publicado.");
   await deps.prisma.postTarget.update({ where: { id: targetId }, data: { status: "SCHEDULED", lastError: null } });
-  await requeuePublish(deps.queue, targetId, new Date());
+  await requeuePublish(deps.queue, targetId, retryAt(target.scheduledAt));
 }
 
 export async function cancelTarget(deps: { prisma: PrismaClient; queue: PublishQueueLike }, organizationId: string, targetId: string, allowed: string[] | null = null) {
@@ -122,4 +122,59 @@ export async function cancelTarget(deps: { prisma: PrismaClient; queue: PublishQ
   }
   await dequeuePublish(deps.queue, targetId);
   await deps.prisma.postTarget.update({ where: { id: targetId }, data: { status: "CANCELLED" } });
+}
+
+interface BulkScope {
+  postId?: string;
+  from?: Date;
+  to?: Date;
+}
+
+function bulkWhere(organizationId: string, allowed: string[] | null, scope: BulkScope, statuses: Array<"SCHEDULED" | "FAILED" | "CANCELLED" | "PUBLISHING">) {
+  return {
+    organizationId,
+    status: { in: statuses },
+    ...(scope.postId ? { postId: scope.postId } : {}),
+    ...(scope.from || scope.to ? { scheduledAt: { ...(scope.from ? { gte: scope.from } : {}), ...(scope.to ? { lt: scope.to } : {}) } } : {}),
+    ...(allowed ? { account: { unitId: { in: allowed } } } : {}),
+  };
+}
+
+/** Horário da re-tentativa: o agendado, se ainda não passou; senão, agora. */
+function retryAt(scheduledAt: Date, now: Date = new Date()): Date {
+  return scheduledAt.getTime() > now.getTime() ? scheduledAt : now;
+}
+
+/** Re-tenta todas as publicações com falha ou canceladas no escopo (no horário agendado, ou agora se já passou). Devolve quantas. */
+export async function retryAllTargets(deps: { prisma: PrismaClient; queue: PublishQueueLike }, organizationId: string, allowed: string[] | null, scope: BulkScope): Promise<number> {
+  const targets = await deps.prisma.postTarget.findMany({ where: bulkWhere(organizationId, allowed, scope, ["FAILED", "CANCELLED"]), select: { id: true, scheduledAt: true } });
+  if (targets.length === 0) return 0;
+  await deps.prisma.postTarget.updateMany({ where: { id: { in: targets.map((t) => t.id) } }, data: { status: "SCHEDULED", lastError: null } });
+  const now = new Date();
+  for (const t of targets) await requeuePublish(deps.queue, t.id, retryAt(t.scheduledAt, now), now);
+  return targets.length;
+}
+
+/** Cancela todas as publicações ainda não publicadas no escopo. Devolve quantas. */
+export async function cancelAllTargets(deps: { prisma: PrismaClient; queue: PublishQueueLike }, organizationId: string, allowed: string[] | null, scope: BulkScope): Promise<number> {
+  const targets = await deps.prisma.postTarget.findMany({ where: bulkWhere(organizationId, allowed, scope, ["SCHEDULED", "FAILED"]), select: { id: true } });
+  if (targets.length === 0) return 0;
+  for (const t of targets) await dequeuePublish(deps.queue, t.id).catch(() => false);
+  await deps.prisma.postTarget.updateMany({ where: { id: { in: targets.map((t) => t.id) } }, data: { status: "CANCELLED" } });
+  return targets.length;
+}
+
+/**
+ * Exclui a postagem (e seu histórico de publicações). Jobs pendentes saem da fila.
+ * O que já foi publicado nas plataformas não é removido de lá.
+ */
+export async function deletePost(deps: { prisma: PrismaClient; queue: PublishQueueLike }, organizationId: string, allowed: string[] | null, postId: string) {
+  const post = await deps.prisma.post.findFirst({
+    where: { id: postId, organizationId, ...(allowed ? { targets: { every: { account: { unitId: { in: allowed } } } } } : {}) },
+    include: { targets: { select: { id: true, status: true } } },
+  });
+  if (!post) throw new HttpError(404, "Postagem não encontrada ou fora das suas unidades.");
+  for (const t of post.targets) if (t.status === "SCHEDULED" || t.status === "FAILED") await dequeuePublish(deps.queue, t.id).catch(() => false);
+  await deps.prisma.post.delete({ where: { id: postId } });
+  return { targets: post.targets.length, published: post.targets.filter((t) => t.status === "PUBLISHED").length };
 }

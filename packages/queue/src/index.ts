@@ -72,10 +72,9 @@ export async function ensureMetricsScheduler(queue: Queue<AppJobData>): Promise<
   await queue.upsertJobScheduler(METRICS_SCHEDULER_ID, { every: METRICS_EVERY_MS }, { name: METRICS_JOB_NAME, data: {} });
 }
 
-/** Coleta imediata para uma organização (botão "Atualizar agora"); jobId evita duplicar em sequência. */
+/** Coleta imediata para uma organização. jobId fixo: enquanto houver uma coleta pendente ou em andamento, novas chamadas são ignoradas. */
 export async function enqueueMetricsNow(queue: PublishQueueLike, organizationId: string): Promise<void> {
-  const slot = Math.floor(Date.now() / 60_000); // no máximo 1 por minuto por organização
-  await queue.add(METRICS_JOB_NAME, { organizationId } as never, { jobId: `metrics-${organizationId}-${slot}`, attempts: 1, removeOnComplete: true });
+  await queue.add(METRICS_JOB_NAME, { organizationId } as never, { jobId: `metrics-${organizationId}`, attempts: 1, removeOnComplete: true, removeOnFail: true });
 }
 
 /** Agendador diário da importação de publicações externas (idempotente). */
@@ -83,11 +82,10 @@ export async function ensureImportScheduler(queue: Queue<AppJobData>): Promise<v
   await queue.upsertJobScheduler(IMPORT_SCHEDULER_ID, { every: IMPORT_EVERY_MS }, { name: IMPORT_JOB_NAME, data: {} });
 }
 
-/** Importação imediata (botão ou logo após conectar uma conta); 1 por minuto por organização/conta. */
+/** Importação imediata (botão ou logo após conectar uma conta). jobId fixo por organização/conta: não duplica enquanto houver uma em andamento. */
 export async function enqueueImportNow(queue: PublishQueueLike, data: ImportJobData): Promise<void> {
-  const slot = Math.floor(Date.now() / 60_000);
   const key = data.connectedAccountId ?? data.organizationId ?? "all";
-  await queue.add(IMPORT_JOB_NAME, data as never, { jobId: `import-${key}-${slot}`, attempts: 1, removeOnComplete: true });
+  await queue.add(IMPORT_JOB_NAME, data as never, { jobId: `import-${key}`, attempts: 1, removeOnComplete: true, removeOnFail: true });
 }
 
 /** Agendador da reconciliação (idempotente). */

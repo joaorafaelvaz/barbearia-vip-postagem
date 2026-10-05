@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlatformBadge, StatusBadge } from "@/components/Badges";
+import { BulkActions } from "@/components/BulkActions";
 import { DashboardCalendar } from "@/components/DashboardCalendar";
 import { IconAlert, IconCalendar, IconCheck, IconChevronLeft, IconChevronRight, IconClock, IconPlus } from "@/components/Icons";
 import { TargetActions } from "@/components/TargetActions";
@@ -95,7 +96,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       />
 
       <section>
-        <h2>Publicações do mês</h2>
+        <div className="row between">
+          <h2>Publicações do mês</h2>
+          <BulkActions compact scope={{ from: range.start.toISOString(), to: range.end.toISOString() }} retryable={(counts.FAILED ?? 0) + (counts.CANCELLED ?? 0)} cancellable={counts.SCHEDULED ?? 0} />
+        </div>
         <div className="card tight">
           {targets.length === 0 ? (
             <div className="empty">

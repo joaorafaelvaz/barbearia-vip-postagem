@@ -65,7 +65,7 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
    `https://SEU-DOMINIO/api/oauth/meta/callback` (em dev: `http://localhost:3022/api/oauth/meta/callback`).
 3. Copie `App ID` e `App Secret` para `META_APP_ID` e `META_APP_SECRET`.
 4. Em **App Review**, solicite as permissões `pages_show_list`, `pages_read_engagement`,
-   `pages_manage_posts`, `read_insights`, `instagram_basic`, `instagram_content_publish`,
+   `pages_read_user_content`, `pages_manage_posts`, `read_insights`, `instagram_basic`, `instagram_content_publish`,
    `instagram_manage_insights`, `business_management`.
    Enquanto o app está em modo de desenvolvimento, só usuários com papel no app
    (admin/desenvolvedor/testador) conseguem conectar contas.

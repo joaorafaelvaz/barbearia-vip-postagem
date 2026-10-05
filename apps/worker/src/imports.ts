@@ -42,7 +42,8 @@ export async function importPosts(deps: ImportDeps, filter: { organizationId?: s
       summary.imported += posts.length;
     } catch (err) {
       summary.failed++;
-      log("import failed", { accountId: a.id, platform: a.platform, code: toPublishError(err).code });
+      const perr = toPublishError(err);
+      log("import failed", { accountId: a.id, platform: a.platform, code: perr.code, message: perr.message });
     }
   }
   log("import done", { ...summary, ...filter });

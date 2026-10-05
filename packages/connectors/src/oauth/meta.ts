@@ -9,6 +9,7 @@ import type { FetchLike } from "../types.js";
 export const META_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
+  "pages_read_user_content",
   "pages_manage_posts",
   "read_insights",
   "instagram_basic",

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PlatformBadge, StatusBadge } from "@/components/Badges";
+import { BulkActions } from "@/components/BulkActions";
 import { IconChevronLeft, IconLink } from "@/components/Icons";
 import { TargetActions } from "@/components/TargetActions";
 import { allowedUnitIds } from "@/lib/authz";
@@ -33,6 +34,7 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
           <h1>Postagem de {formatLocal(post.scheduledLocal)} <span className="badge platform" style={{ verticalAlign: "middle" }}>{POST_FORMAT_LABELS[post.format as PostFormat]}</span></h1>
           <p className="lead">{post.targets.length} conta{post.targets.length === 1 ? "" : "s"} · {Object.entries(counts).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(" · ")}</p>
         </div>
+        <BulkActions scope={{ postId: post.id }} retryable={(counts.FAILED ?? 0) + (counts.CANCELLED ?? 0)} cancellable={(counts.SCHEDULED ?? 0) + (counts.FAILED ?? 0)} allowDelete />
       </div>
       <div className="card stack">
         <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{post.caption || <span className="muted">(sem texto)</span>}</p>
