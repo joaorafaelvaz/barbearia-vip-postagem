@@ -1,4 +1,4 @@
-import type { MediaKind, Platform } from "@fsp/core";
+import type { MediaKind, Platform, PostFormat } from "@fsp/core";
 
 /** Dados mínimos de uma conta para publicar. O token já vem descriptografado. */
 export interface AccountCredentials {
@@ -16,6 +16,8 @@ export interface MediaRef {
 
 export interface PublishInput {
   account: AccountCredentials;
+  /** FEED (padrão), STORY ou REEL */
+  format?: PostFormat;
   caption: string;
   /** Mídias públicas, em ordem. Um post tem só imagens ou um único vídeo. */
   media: readonly MediaRef[];

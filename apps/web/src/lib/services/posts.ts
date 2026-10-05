@@ -1,10 +1,11 @@
-import { localToUtc, validateCaption, validateMediaSet, type MediaKind, type Platform } from "@fsp/core";
+import { localToUtc, validateCaption, validateFormat, validateMediaSet, type MediaKind, type Platform, type PostFormat } from "@fsp/core";
 import { enqueuePublish, requeuePublish, dequeuePublish, type PublishQueueLike } from "@fsp/queue";
 import type { PrismaClient } from "@fsp/db";
 import { z } from "zod";
 import { HttpError } from "../api";
 
 export const createPostSchema = z.object({
+  format: z.enum(["FEED", "STORY", "REEL"]).default("FEED"),
   caption: z.string().max(70_000),
   /** `YYYY-MM-DDTHH:mm` no fuso de cada unidade */
   scheduledLocal: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
@@ -26,15 +27,17 @@ interface AccountRow {
  * usando o fuso da unidade de cada conta. Separada para ser testável sem banco.
  */
 export function buildTargets(
-  input: Pick<CreatePostInput, "caption" | "scheduledLocal">,
+  input: Pick<CreatePostInput, "caption" | "scheduledLocal"> & { format?: PostFormat },
   accounts: readonly AccountRow[],
   mediaKinds: readonly MediaKind[],
   now: Date = new Date(),
 ): Array<{ connectedAccountId: string; scheduledAt: Date }> {
   const platforms = [...new Set(accounts.map((a) => a.platform))];
+  const format = input.format ?? "FEED";
   const issues = [
     ...validateCaption(input.caption, platforms, mediaKinds.length > 0),
-    ...validateMediaSet(mediaKinds, platforms),
+    ...(format === "FEED" ? validateMediaSet(mediaKinds, platforms) : []),
+    ...validateFormat(format, platforms, mediaKinds),
   ];
   if (issues.length > 0) {
     throw new HttpError(400, issues.map((i) => i.message).join(" "), issues);
@@ -82,6 +85,7 @@ export async function createPost(
     const created = await tx.post.create({
       data: {
         organizationId,
+        format: input.format,
         caption: input.caption,
         scheduledLocal: input.scheduledLocal,
         createdById: userId,

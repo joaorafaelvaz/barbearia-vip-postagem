@@ -1,4 +1,5 @@
 import { PublishError } from "@fsp/core";
+import { publishFacebookPhotoStory, publishFacebookVideoPhased } from "./facebook-stories.js";
 import { defaultFetch, formBody, mapMetaError, readJson, safeFetch } from "./http.js";
 import { splitMedia, type ConnectorOptions, type PublishInput, type PublishResult, type Publisher } from "./types.js";
 
@@ -26,6 +27,18 @@ export class FacebookPagePublisher implements Publisher {
     const { images, video } = splitMedia(input.media);
     const pageId = account.externalId;
     const token = account.accessToken;
+    const format = input.format ?? "FEED";
+
+    if (format === "STORY") {
+      if (input.media.length !== 1) throw new PublishError("VALIDATION", "Story exige exatamente uma imagem ou um vídeo.");
+      return video
+        ? publishFacebookVideoPhased(this.fetch, "video_stories", pageId, token, video, caption)
+        : publishFacebookPhotoStory(this.fetch, pageId, token, images[0] as string);
+    }
+    if (format === "REEL") {
+      if (!video || images.length > 0) throw new PublishError("VALIDATION", "Reel exige exatamente um vídeo.");
+      return publishFacebookVideoPhased(this.fetch, "video_reels", pageId, token, video, caption);
+    }
 
     if (video) {
       if (images.length > 0) throw new PublishError("VALIDATION", "Facebook não aceita vídeo e imagens no mesmo post.");

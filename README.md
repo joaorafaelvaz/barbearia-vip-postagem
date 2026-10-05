@@ -83,6 +83,14 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
    `https://SEU-DOMINIO/api/oauth/google/callback` e preencha `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
 4. O usuário que conecta deve ser proprietário/gerente dos perfis das unidades.
 
+### Formatos: Feed, Story e Reel
+
+Na composição escolha o formato. **Feed** é o padrão (imagens, carrossel ou vídeo; única opção
+para o Google Meu Negócio). **Story** aceita uma imagem ou um vídeo e não envia legenda (as APIs
+não suportam); no Facebook usa `photo_stories`/`video_stories`, no Instagram `media_type=STORIES`.
+**Reel** exige um vídeo; no Facebook usa `video_reels` (upload em fases por URL), no Instagram
+`media_type=REELS`. Story e Reel só em Facebook e Instagram.
+
 ### Mídia
 
 Imagens: JPG, PNG, GIF (o Instagram só aceita JPG). Vídeo: MP4 ou MOV, um por postagem, sem

@@ -4,6 +4,7 @@ import {
   backoffMs,
   toPublishError,
   type Platform,
+  type PostFormat,
   type TokenCipher,
 } from "@fsp/core";
 
@@ -14,7 +15,7 @@ export interface TargetRecord {
   status: string;
   attempts: number;
   scheduledAt: Date;
-  post: { caption: string; media: MediaRef[] };
+  post: { caption: string; media: MediaRef[]; format?: PostFormat };
   account: {
     id: string;
     organizationId: string;
@@ -85,6 +86,7 @@ export async function processTarget(deps: ProcessorDeps, postTargetId: string): 
     const accessToken = await resolveAccessToken(deps, target, now());
     const input: PublishInput = {
       account: { platform: target.account.platform, externalId: target.account.externalId, accessToken },
+      format: target.post.format ?? "FEED",
       caption: target.post.caption,
       media: target.post.media,
     };

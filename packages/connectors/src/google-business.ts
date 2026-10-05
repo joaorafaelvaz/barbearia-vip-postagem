@@ -20,6 +20,9 @@ export class GoogleBusinessProfilePublisher implements Publisher {
   async publish(input: PublishInput): Promise<PublishResult> {
     const { account, caption } = input;
     const { images, video } = splitMedia(input.media);
+    if (input.format && input.format !== "FEED") {
+      throw new PublishError("VALIDATION", "Google Business Profile não aceita Story nem Reel.");
+    }
     if (video) {
       throw new PublishError("VALIDATION", "Google Business Profile não aceita vídeo em postagens via API.");
     }

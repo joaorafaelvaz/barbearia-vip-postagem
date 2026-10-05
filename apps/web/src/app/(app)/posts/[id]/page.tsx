@@ -5,6 +5,7 @@ import { IconChevronLeft, IconLink } from "@/components/Icons";
 import { TargetActions } from "@/components/TargetActions";
 import { allowedUnitIds } from "@/lib/authz";
 import { prisma } from "@/lib/db";
+import { POST_FORMAT_LABELS, type PostFormat } from "@fsp/core";
 import { formatInTz, formatLocal } from "@/lib/format";
 import { requireSession } from "@/lib/session";
 
@@ -29,7 +30,7 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
       <div className="page-head">
         <div>
           <Link href="/" className="row" style={{ gap: 4, marginBottom: 8 }}><IconChevronLeft size="sm" /> Painel</Link>
-          <h1>Postagem de {formatLocal(post.scheduledLocal)}</h1>
+          <h1>Postagem de {formatLocal(post.scheduledLocal)} <span className="badge platform" style={{ verticalAlign: "middle" }}>{POST_FORMAT_LABELS[post.format as PostFormat]}</span></h1>
           <p className="lead">{post.targets.length} conta{post.targets.length === 1 ? "" : "s"} · {Object.entries(counts).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(" · ")}</p>
         </div>
       </div>

@@ -63,3 +63,49 @@ export function validateCaption(
   }
   return issues;
 }
+
+/** Formato da postagem. Espelha o enum PostFormat do Prisma. */
+export type PostFormat = "FEED" | "STORY" | "REEL";
+
+export const POST_FORMAT_LABELS: Record<PostFormat, string> = {
+  FEED: "Feed",
+  STORY: "Story",
+  REEL: "Reel",
+};
+
+/** Quais plataformas aceitam cada formato via API. */
+export const FORMAT_SUPPORT: Record<PostFormat, readonly Platform[]> = {
+  FEED: ["FACEBOOK_PAGE", "INSTAGRAM", "GOOGLE_BUSINESS_PROFILE"],
+  STORY: ["FACEBOOK_PAGE", "INSTAGRAM"],
+  REEL: ["FACEBOOK_PAGE", "INSTAGRAM"],
+};
+
+export interface FormatIssue {
+  platform: Platform | null;
+  message: string;
+}
+
+/**
+ * Regras do formato: Story = exatamente uma mídia (imagem ou vídeo), legenda ignorada;
+ * Reel = exatamente um vídeo; ambos só em Facebook e Instagram.
+ */
+export function validateFormat(
+  format: PostFormat,
+  platforms: readonly Platform[],
+  mediaKinds: readonly ("IMAGE" | "VIDEO")[],
+): FormatIssue[] {
+  const issues: FormatIssue[] = [];
+  if (format === "FEED") return issues;
+  for (const p of platforms) {
+    if (!FORMAT_SUPPORT[format].includes(p)) {
+      issues.push({ platform: p, message: `${PLATFORM_LABELS[p]} não aceita ${POST_FORMAT_LABELS[format]}: desmarque essas contas.` });
+    }
+  }
+  if (format === "STORY") {
+    if (mediaKinds.length !== 1) issues.push({ platform: null, message: "Story precisa de exatamente uma imagem ou um vídeo." });
+  }
+  if (format === "REEL") {
+    if (mediaKinds.length !== 1 || mediaKinds[0] !== "VIDEO") issues.push({ platform: null, message: "Reel precisa de exatamente um vídeo." });
+  }
+  return issues;
+}

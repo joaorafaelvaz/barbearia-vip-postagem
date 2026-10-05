@@ -6,6 +6,7 @@ import type { ConnectorOptions, Publisher } from "./types.js";
 
 export * from "./types.js";
 export * from "./facebook.js";
+export * from "./facebook-stories.js";
 export * from "./instagram.js";
 export * from "./google-business.js";
 export * from "./oauth/meta.js";

@@ -30,6 +30,11 @@ export class InstagramPublisher implements Publisher {
   async publish(input: PublishInput): Promise<PublishResult> {
     const { account, caption } = input;
     const { images, video } = splitMedia(input.media);
+    const format = input.format ?? "FEED";
+    if (format === "STORY") return this.publishStory(input);
+    if (format === "REEL" && !video) {
+      throw new PublishError("VALIDATION", "Reel exige um vídeo.");
+    }
     if (input.media.length === 0) {
       throw new PublishError("VALIDATION", "Instagram exige pelo menos uma imagem ou vídeo.");
     }
@@ -77,6 +82,24 @@ export class InstagramPublisher implements Publisher {
 
     const permalink = await this.fetchPermalink(mediaId, token);
     return permalink ? { externalPostId: mediaId, externalUrl: permalink } : { externalPostId: mediaId };
+  }
+
+  /** Story: media_type=STORIES com uma imagem ou um vídeo; a API ignora legenda. */
+  private async publishStory(input: PublishInput): Promise<PublishResult> {
+    const { images, video } = splitMedia(input.media);
+    if (input.media.length !== 1) throw new PublishError("VALIDATION", "Story exige exatamente uma imagem ou um vídeo.");
+    const igUserId = input.account.externalId;
+    const token = input.account.accessToken;
+    const containerId = await this.createContainer(igUserId, {
+      media_type: "STORIES",
+      ...(video ? { video_url: video } : { image_url: images[0] }),
+      access_token: token,
+    });
+    await this.waitUntilFinished(containerId, token, video ? POLL_MAX_ATTEMPTS_VIDEO : POLL_MAX_ATTEMPTS_IMAGE);
+    const published = await this.postJson(`${GRAPH_BASE}/${igUserId}/media_publish`, { creation_id: containerId, access_token: token });
+    const mediaId = published.id;
+    if (typeof mediaId !== "string") throw new PublishError("UNKNOWN", "media_publish não retornou id.");
+    return { externalPostId: mediaId };
   }
 
   private async createContainer(igUserId: string, fields: Record<string, string | undefined>): Promise<string> {

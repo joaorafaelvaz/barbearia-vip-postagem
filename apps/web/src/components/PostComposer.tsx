@@ -1,10 +1,12 @@
 "use client";
 
 import { validateMediaSet, type MediaKind } from "@fsp/core/media";
+import { validateFormat, type PostFormat } from "@fsp/core/platforms";
 import { CAPTION_LIMITS, PLATFORM_LABELS, type Platform } from "@fsp/core/platforms";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AccountSelector, type ComposerUnit } from "./AccountSelector";
+import { FormatPicker } from "./FormatPicker";
 import { IconAlert, IconCheck, IconInfo } from "./Icons";
 import { MediaPicker, type Uploaded } from "./MediaPicker";
 
@@ -18,6 +20,7 @@ function minLocal(): string {
 
 export function PostComposer({ units }: { units: ComposerUnit[] }) {
   const router = useRouter();
+  const [format, setFormat] = useState<PostFormat>("FEED");
   const [caption, setCaption] = useState("");
   const [when, setWhen] = useState("");
   const [whenTouched, setWhenTouched] = useState(false);
@@ -35,9 +38,10 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
   const captionLen = [...caption].length;
   const overLimit = selectedPlatforms.filter((p) => captionLen > CAPTION_LIMITS[p]);
   const mediaIssues = media.flatMap((m) => m.issues.filter((i) => selectedPlatforms.includes(i.platform)));
-  const setIssues = validateMediaSet(media.map((m) => m.kind as MediaKind), selectedPlatforms);
+  const kinds = media.map((m) => m.kind as MediaKind);
+  const setIssues = [...(format === "FEED" ? validateMediaSet(kinds, selectedPlatforms) : []), ...validateFormat(format, selectedPlatforms, kinds)];
   const warnings = [...new Set([...setIssues, ...mediaIssues].map((i) => i.message))];
-  const needsMedia = selectedPlatforms.includes("INSTAGRAM") && media.length === 0;
+  const needsMedia = (selectedPlatforms.includes("INSTAGRAM") || format !== "FEED") && media.length === 0;
   const whenInPast = when !== "" && new Date(when).getTime() < Date.now();
   const whenError = whenTouched && (when === "" ? "Escolha a data e a hora." : whenInPast ? "Esse horário já passou." : null);
 
@@ -45,7 +49,7 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
     selected.size === 0 ? "Selecione pelo menos uma conta."
     : !when ? "Escolha a data e a hora."
     : whenInPast ? "O horário escolhido já passou."
-    : needsMedia ? "O Instagram exige uma imagem ou vídeo."
+    : needsMedia ? (format === "FEED" ? "O Instagram exige uma imagem ou vídeo." : `${format === "REEL" ? "Reel exige um vídeo" : "Story exige uma imagem ou um vídeo"}.`)
     : setIssues.length > 0 ? "Ajuste as mídias ou as contas selecionadas."
     : overLimit.length > 0 ? `Texto acima do limite do ${overLimit.map((p) => PLATFORM_LABELS[p]).join(", ")}.`
     : caption.trim() === "" && media.length === 0 ? "Escreva um texto ou anexe uma mídia."
@@ -58,7 +62,7 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
     const res = await fetch("/api/posts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ caption, scheduledLocal: when, mediaIds: media.map((m) => m.id), accountIds: [...selected] }),
+      body: JSON.stringify({ format, caption, scheduledLocal: when, mediaIds: media.map((m) => m.id), accountIds: [...selected] }),
     });
     setBusy(false);
     if (!res.ok) {
@@ -75,8 +79,9 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
       <div className="card stack lg">
         <section className="section">
           <h2 className="section-title"><span className="num">1</span> Conteúdo</h2>
+          <FormatPicker value={format} onChange={setFormat} />
           <div className="field">
-            <label htmlFor="caption">Texto da postagem</label>
+            <label htmlFor="caption">{format === "STORY" ? "Texto (não é enviado em Stories; fica só como registro)" : "Texto da postagem"}</label>
             <textarea id="caption" value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escreva a legenda que será publicada em todas as contas selecionadas" aria-describedby="caption-hint" aria-invalid={overLimit.length > 0 || undefined} />
             <small id="caption-hint" className="hint">
               {captionLen} caracteres

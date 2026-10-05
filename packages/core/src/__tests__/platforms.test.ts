@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateCaption } from "../platforms.js";
+import { validateCaption, validateFormat } from "../platforms.js";
 import { validateImage, validateMediaSet, validateVideo } from "../media.js";
 
 describe("validateCaption", () => {
@@ -88,5 +88,20 @@ describe("validateMediaSet", () => {
   it("dois vídeos ou vídeo misturado com imagem é bloqueado", () => {
     expect(validateMediaSet(["VIDEO", "VIDEO"], ["INSTAGRAM"]).length).toBe(1);
     expect(validateMediaSet(["VIDEO", "IMAGE"], ["FACEBOOK_PAGE"]).length).toBe(1);
+  });
+});
+
+describe("validateFormat", () => {
+  it("Feed não impõe regras extras", () => {
+    expect(validateFormat("FEED", ["GOOGLE_BUSINESS_PROFILE"], [])).toEqual([]);
+  });
+  it("Story: uma mídia, só Facebook/Instagram", () => {
+    expect(validateFormat("STORY", ["INSTAGRAM", "FACEBOOK_PAGE"], ["IMAGE"])).toEqual([]);
+    expect(validateFormat("STORY", ["INSTAGRAM"], ["IMAGE", "IMAGE"]).length).toBe(1);
+    expect(validateFormat("STORY", ["GOOGLE_BUSINESS_PROFILE"], ["IMAGE"])[0]?.message).toMatch(/não aceita Story/);
+  });
+  it("Reel: exatamente um vídeo", () => {
+    expect(validateFormat("REEL", ["INSTAGRAM"], ["VIDEO"])).toEqual([]);
+    expect(validateFormat("REEL", ["INSTAGRAM"], ["IMAGE"])[0]?.message).toMatch(/um vídeo/);
   });
 });

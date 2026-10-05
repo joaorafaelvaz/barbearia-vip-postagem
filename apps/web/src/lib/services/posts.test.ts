@@ -37,6 +37,19 @@ describe("buildTargets", () => {
     expect(buildTargets({ caption: "x", scheduledLocal: "2026-10-15T09:00" }, only, ["VIDEO"], now)).toHaveLength(2);
   });
 
+  it("Story exige exatamente uma mídia e bloqueia Google", () => {
+    expect(() => buildTargets({ caption: "", scheduledLocal: "2026-10-15T09:00", format: "STORY" }, accounts, ["IMAGE"], now)).toThrow(/não aceita Story/);
+    const fbig = accounts.filter((a) => a.platform !== "GOOGLE_BUSINESS_PROFILE");
+    expect(buildTargets({ caption: "", scheduledLocal: "2026-10-15T09:00", format: "STORY" }, fbig, ["IMAGE"], now)).toHaveLength(2);
+    expect(() => buildTargets({ caption: "", scheduledLocal: "2026-10-15T09:00", format: "STORY" }, fbig, ["IMAGE", "IMAGE"], now)).toThrow(/exatamente uma/);
+  });
+
+  it("Reel exige um vídeo", () => {
+    const fbig = accounts.filter((a) => a.platform !== "GOOGLE_BUSINESS_PROFILE");
+    expect(buildTargets({ caption: "x", scheduledLocal: "2026-10-15T09:00", format: "REEL" }, fbig, ["VIDEO"], now)).toHaveLength(2);
+    expect(() => buildTargets({ caption: "x", scheduledLocal: "2026-10-15T09:00", format: "REEL" }, fbig, ["IMAGE"], now)).toThrow(/um vídeo/);
+  });
+
   it("rejeita horário no passado", () => {
     expect(() => buildTargets({ caption: "x", scheduledLocal: "2026-09-01T09:00" }, accounts, ["IMAGE"], now)).toThrow(/já passou/);
   });

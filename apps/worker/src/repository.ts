@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@fsp/db";
-import type { MediaKind, Platform } from "@fsp/core";
+import type { MediaKind, Platform, PostFormat } from "@fsp/core";
 import type { PostMetrics } from "@fsp/connectors";
 import type { TargetRecord, TargetRepository } from "./processor.js";
 import type { ExternalPostSummary } from "@fsp/connectors";
@@ -26,6 +26,7 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
         scheduledAt: t.scheduledAt,
         post: {
           caption: t.post.caption,
+          format: t.post.format as PostFormat,
           media: t.post.media.map((m) => ({ url: m.media.publicUrl, kind: m.media.kind as MediaKind })),
         },
         account: {

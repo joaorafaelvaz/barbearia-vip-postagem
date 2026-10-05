@@ -133,10 +133,17 @@ model MediaAsset {
   @@index([organizationId])
 }
 
+enum PostFormat {
+  FEED
+  STORY
+  REEL
+}
+
 /// Conteúdo de uma postagem. Um Post gera N PostTargets (um por conta selecionada).
 model Post {
-  id             String   @id @default(cuid())
+  id             String     @id @default(cuid())
   organizationId String
+  format         PostFormat @default(FEED)
   caption        String
   /// Horário local escolhido pelo usuário (YYYY-MM-DDTHH:mm) para exibição
   scheduledLocal String
