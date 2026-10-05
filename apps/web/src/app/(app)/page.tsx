@@ -1,3 +1,4 @@
+import { POST_FORMAT_LABELS, type PostFormat } from "@fsp/core";
 import Link from "next/link";
 import { PlatformBadge, StatusBadge } from "@/components/Badges";
 import { BulkActions } from "@/components/BulkActions";
@@ -111,13 +112,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           ) : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th scope="col">Horário local</th><th scope="col">Unidade</th><th scope="col">Plataforma</th><th scope="col">Texto</th><th scope="col">Status</th><th scope="col"><span className="visually-hidden">Ações</span></th></tr></thead>
+                <thead><tr><th scope="col">Horário local</th><th scope="col">Unidade</th><th scope="col">Plataforma</th><th scope="col">Formato</th><th scope="col">Texto</th><th scope="col">Status</th><th scope="col"><span className="visually-hidden">Ações</span></th></tr></thead>
                 <tbody>
                   {targets.map((t) => (
                     <tr key={t.id}>
                       <td style={{ whiteSpace: "nowrap" }}>{formatInTz(t.scheduledAt, t.account.unit.timezone)}</td>
                       <td>{t.account.unit.name}</td>
                       <td><PlatformBadge platform={t.account.platform} /></td>
+                      <td><span className="badge platform">{POST_FORMAT_LABELS[t.post.format as PostFormat]}</span></td>
                       <td><Link href={`/posts/${t.postId}`}>{shorten(t.post.caption || "(sem texto)")}</Link></td>
                       <td><StatusBadge status={t.status} />{t.lastError && <small style={{ display: "block", color: "var(--err)", marginTop: 4 }}>{shorten(t.lastError, 80)}</small>}</td>
                       <td className="actions"><TargetActions id={t.id} status={t.status} /></td>
