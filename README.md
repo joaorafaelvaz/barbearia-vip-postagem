@@ -64,11 +64,25 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
 2. Adicione o produto **Facebook Login for Business** e configure a URL de redirecionamento
    `https://SEU-DOMINIO/api/oauth/meta/callback` (em dev: `http://localhost:3022/api/oauth/meta/callback`).
 3. Copie `App ID` e `App Secret` para `META_APP_ID` e `META_APP_SECRET`.
-4. Em **App Review**, solicite as permissões `pages_show_list`, `pages_read_engagement`,
-   `pages_read_user_content`, `pages_manage_posts`, `read_insights`, `instagram_basic`, `instagram_content_publish`,
-   `instagram_manage_insights`, `business_management`.
+4. Em **App Review**, solicite as permissões abaixo (todas são pedidas no login, veja
+   `META_SCOPES` em `packages/connectors/src/oauth/meta.ts`). Não inclua `publish_video`:
+   ela não existe no Facebook Login for Business e causa o erro "Invalid Scopes".
+
+   | Permissão | Para que serve |
+   |---|---|
+   | `pages_show_list` | Listar as Páginas do usuário na tela de conexão |
+   | `pages_read_engagement` | Ler dados básicos da Página e localizar a conta Instagram vinculada |
+   | `pages_read_user_content` | Importar as publicações antigas do feed da Página (90 dias) |
+   | `pages_manage_posts` | Publicar texto, fotos, vídeos, Stories e Reels na Página |
+   | `read_insights` | Coletar métricas da Página (alcance, impressões, cliques) |
+   | `instagram_basic` | Identificar a conta Instagram Business e listar as mídias publicadas |
+   | `instagram_content_publish` | Publicar Feed, carrossel, Stories e Reels no Instagram |
+   | `instagram_manage_insights` | Coletar métricas do Instagram (alcance, visualizações, salvamentos, compartilhamentos) |
+   | `business_management` | Acessar Páginas e contas Instagram ligadas ao Gerenciador de Negócios |
+
    Enquanto o app está em modo de desenvolvimento, só usuários com papel no app
-   (admin/desenvolvedor/testador) conseguem conectar contas.
+   (admin/desenvolvedor/testador) conseguem conectar contas. Contas conectadas antes de
+   uma permissão ser adicionada precisam ser reconectadas em **Unidades**.
 5. Cada unidade precisa de uma **Facebook Page** com um **Instagram Business/Creator**
    vinculado. O app publica via Content Publishing API (limite de 25 posts/24h por conta).
 
