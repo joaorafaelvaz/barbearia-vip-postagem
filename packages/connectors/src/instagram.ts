@@ -49,11 +49,16 @@ export class InstagramPublisher implements Publisher {
 
     let containerId: string;
     if (video) {
+      // Capa: cover_url (imagem JPEG pública) tem precedência sobre thumb_offset (ms do vídeo).
+      const cover = input.cover?.imageUrl
+        ? { cover_url: input.cover.imageUrl }
+        : input.cover?.offsetMs !== undefined ? { thumb_offset: String(Math.max(0, Math.round(input.cover.offsetMs))) } : {};
       containerId = await this.createContainer(igUserId, {
         media_type: "REELS",
         video_url: video,
         share_to_feed: "true",
         caption,
+        ...cover,
         access_token: token,
       });
     } else if (images.length === 1) {

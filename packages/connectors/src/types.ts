@@ -21,6 +21,13 @@ export interface PublishInput {
   caption: string;
   /** Mídias públicas, em ordem. Um post tem só imagens ou um único vídeo. */
   media: readonly MediaRef[];
+  /** Capa do Reel: imagem pública (JPEG) e/ou quadro do vídeo em ms. */
+  cover?: ReelCover;
+}
+
+export interface ReelCover {
+  imageUrl?: string;
+  offsetMs?: number;
 }
 
 export interface PublishResult {

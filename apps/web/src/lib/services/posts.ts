@@ -12,6 +12,9 @@ export const createPostSchema = z.object({
   mediaIds: z.array(z.string().min(1)).max(10).default([]),
   /** Contas conectadas selecionadas (uma por unidade × plataforma) */
   accountIds: z.array(z.string().min(1)).min(1, "Selecione pelo menos uma conta"),
+  /** Capa do Reel: imagem enviada (MediaAsset IMAGE) e/ou quadro do vídeo em ms */
+  coverMediaId: z.string().min(1).nullish(),
+  coverOffsetMs: z.number().int().min(0).nullish(),
 });
 export type CreatePostInput = z.infer<typeof createPostSchema>;
 
@@ -85,6 +88,15 @@ export async function createPost(
 
   const targets = buildTargets(input, accounts as AccountRow[], mediaInfo);
 
+  // Capa só faz sentido em Reel; ignorada nos demais formatos.
+  let coverMediaId: string | null = null;
+  const coverOffsetMs = input.format === "REEL" && input.coverOffsetMs != null ? input.coverOffsetMs : null;
+  if (input.format === "REEL" && input.coverMediaId) {
+    const cover = await deps.prisma.mediaAsset.findFirst({ where: { id: input.coverMediaId, organizationId, kind: "IMAGE" }, select: { id: true } });
+    if (!cover) throw new HttpError(400, "Imagem de capa inválida.");
+    coverMediaId = cover.id;
+  }
+
   const post = await deps.prisma.$transaction(async (tx) => {
     const created = await tx.post.create({
       data: {
@@ -93,6 +105,8 @@ export async function createPost(
         caption: input.caption,
         scheduledLocal: input.scheduledLocal,
         createdById: userId,
+        coverMediaId,
+        coverOffsetMs,
         media: { create: input.mediaIds.map((mediaId, position) => ({ mediaId, position })) },
         targets: { create: targets.map((t) => ({ ...t, organizationId })) },
       },

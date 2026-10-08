@@ -19,6 +19,7 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
     where: { id, organizationId: s.organizationId, ...(allowed ? { targets: { some: targetsWhere } } : {}) },
     include: {
       media: { include: { media: true }, orderBy: { position: "asc" } },
+      coverMedia: true,
       targets: { where: targetsWhere, include: { account: { include: { unit: true } } }, orderBy: { scheduledAt: "asc" } },
     },
   });
@@ -46,6 +47,9 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
               ) : (
                 <div className="thumb" key={m.mediaId}><img src={m.media.publicUrl} alt={`Mídia ${i + 1}`} /></div>
               ),
+            )}
+            {post.coverMedia && (
+              <div className="thumb"><img src={post.coverMedia.publicUrl} alt="Capa do Reel" /><span className="meta">Capa</span></div>
             )}
           </div>
         )}

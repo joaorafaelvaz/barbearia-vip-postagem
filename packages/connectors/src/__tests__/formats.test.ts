@@ -71,3 +71,47 @@ describe("formatos Story e Reel", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe("Capa do Reel", () => {
+  it("Instagram: cover_url quando há imagem; thumb_offset quando só há quadro", async () => {
+    const { fetch, calls } = fakeFetch([
+      () => ({ json: { id: "c1" } }), () => ({ json: { status_code: "FINISHED" } }), () => ({ json: { id: "m1" } }), () => ({ json: { permalink: "https://www.instagram.com/reel/x/" } }),
+    ]);
+    await new InstagramPublisher({ fetch, sleep: noSleep }).publish({ account: account.ig, format: "REEL", caption: "r", media: [vid("https://cdn/r.mp4")], cover: { imageUrl: "https://cdn/cover.jpg", offsetMs: 4000 } });
+    const body = calls[0]?.body as Record<string, string>;
+    expect(body.cover_url).toBe("https://cdn/cover.jpg");
+    expect(body.thumb_offset).toBeUndefined();
+
+    const second = fakeFetch([
+      () => ({ json: { id: "c2" } }), () => ({ json: { status_code: "FINISHED" } }), () => ({ json: { id: "m2" } }), () => ({ json: { permalink: "https://www.instagram.com/reel/y/" } }),
+    ]);
+    await new InstagramPublisher({ fetch: second.fetch, sleep: noSleep }).publish({ account: account.ig, format: "REEL", caption: "r", media: [vid("https://cdn/r.mp4")], cover: { offsetMs: 4000 } });
+    expect((second.calls[0]?.body as Record<string, string>).thumb_offset).toBe("4000");
+  });
+
+  it("Facebook: depois do finish envia a imagem para /{video_id}/thumbnails", async () => {
+    const { fetch, calls } = fakeFetch([
+      () => ({ json: { video_id: "v9", upload_url: "https://rupload.facebook.com/video-upload/v26.0/v9" } }),
+      () => ({ json: { success: true } }),
+      () => ({ json: { success: true, post_id: "p1" } }),
+      () => ({ json: { fake: "image-bytes" } }),
+      () => ({ json: { success: true } }),
+    ]);
+    const res = await new FacebookPagePublisher({ fetch }).publish({ account: account.fb, format: "REEL", caption: "Reel!", media: [vid("https://cdn/r.mp4")], cover: { imageUrl: "https://cdn/cover.jpg" } });
+    expect(res.externalPostId).toBe("v9");
+    expect(calls[3]?.url).toBe("https://cdn/cover.jpg");
+    expect(calls[4]?.url).toMatch(/\/v9\/thumbnails$/);
+    expect(calls[4]?.method).toBe("POST");
+  });
+
+  it("Facebook: falha ao definir a capa não derruba a publicação", async () => {
+    const { fetch } = fakeFetch([
+      () => ({ json: { video_id: "v9", upload_url: "https://rupload.facebook.com/video-upload/v26.0/v9" } }),
+      () => ({ json: { success: true } }),
+      () => ({ json: { success: true } }),
+      () => ({ status: 404, json: {} }),
+    ]);
+    const res = await new FacebookPagePublisher({ fetch }).publish({ account: account.fb, format: "REEL", caption: "Reel!", media: [vid("https://cdn/r.mp4")], cover: { imageUrl: "https://cdn/missing.jpg" } });
+    expect(res.externalPostId).toBe("v9");
+  });
+});

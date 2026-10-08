@@ -10,6 +10,8 @@ export interface Uploaded {
   publicUrl: string;
   durationSec: number | null;
   bytes: number;
+  width: number;
+  height: number;
   issues: Array<{ platform: Platform; message: string }>;
 }
 

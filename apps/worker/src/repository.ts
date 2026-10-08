@@ -16,7 +16,7 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
         where: { id },
         include: {
           account: true,
-          post: { include: { media: { include: { media: true }, orderBy: { position: "asc" } } } },
+          post: { include: { media: { include: { media: true }, orderBy: { position: "asc" } }, coverMedia: true } },
         },
       });
       if (!t) return null;
@@ -30,6 +30,9 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
           caption: t.post.caption,
           format: t.post.format as PostFormat,
           media: t.post.media.map((m) => ({ id: m.media.id, url: m.media.publicUrl, kind: m.media.kind as MediaKind, durationSec: m.media.durationSec })),
+          ...(t.post.coverMedia || t.post.coverOffsetMs !== null
+            ? { cover: { ...(t.post.coverMedia ? { imageUrl: t.post.coverMedia.publicUrl } : {}), ...(t.post.coverOffsetMs !== null ? { offsetMs: t.post.coverOffsetMs } : {}) } }
+            : {}),
         },
         account: {
           id: t.account.id,

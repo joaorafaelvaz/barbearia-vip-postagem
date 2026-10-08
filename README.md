@@ -116,6 +116,15 @@ de outras já publicadas, o alvo fica FAILED sem retentativa automática, para n
 Requisitos: `ffmpeg` na imagem do worker (já incluído) e o volume de uploads montado no
 worker (`UPLOADS_DIR`), ou S3 configurado.
 
+### Pré-visualização e capa do Reel
+
+A tela Nova postagem mostra uma aproximação de como a postagem aparece em cada canal
+selecionado (feed do Instagram e do Facebook, cartão do Google, Story e Reel em 9:16).
+Para Reels é possível escolher a capa: um quadro do vídeo (slider, capturado no navegador
+como JPEG) ou uma imagem JPG enviada. O Instagram recebe `cover_url` (e `thumb_offset`
+como reserva); no Facebook a imagem vai para `POST /{video_id}/thumbnails` depois da
+publicação, e uma falha nesse passo não derruba o Reel.
+
 ### Mídia
 
 Imagens: JPG, PNG, GIF (o Instagram só aceita JPG). Vídeo: MP4 ou MOV, um por postagem, sem

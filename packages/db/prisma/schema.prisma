@@ -134,6 +134,7 @@ model MediaAsset {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   posts        PostMedia[]
+  coverOf      Post[]       @relation("PostCover")
   parent       MediaAsset?  @relation("MediaSegments", fields: [parentId], references: [id], onDelete: Cascade)
   segments     MediaAsset[] @relation("MediaSegments")
 
@@ -156,12 +157,17 @@ model Post {
   /// Horário local escolhido pelo usuário (YYYY-MM-DDTHH:mm) para exibição
   scheduledLocal String
   createdById    String?
+  /// Capa do Reel: imagem (JPEG) escolhida pelo usuário; Instagram usa cover_url, Facebook /thumbnails
+  coverMediaId   String?
+  /// Capa do Reel por quadro do vídeo (ms); usado no Instagram (thumb_offset) quando não há imagem
+  coverOffsetMs  Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   media        PostMedia[]
   targets      PostTarget[]
+  coverMedia   MediaAsset?  @relation("PostCover", fields: [coverMediaId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, createdAt])
 }

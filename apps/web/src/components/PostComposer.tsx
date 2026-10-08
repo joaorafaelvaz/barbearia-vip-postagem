@@ -6,6 +6,8 @@ import { CAPTION_LIMITS, PLATFORM_LABELS, type Platform } from "@fsp/core/platfo
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AccountSelector, type ComposerUnit } from "./AccountSelector";
+import { ChannelPreview } from "./ChannelPreview";
+import { ReelCoverPicker, type ReelCover } from "./ReelCoverPicker";
 import { FormatPicker } from "./FormatPicker";
 import { IconAlert, IconCheck, IconInfo } from "./Icons";
 import { MediaPicker, type Uploaded } from "./MediaPicker";
@@ -26,6 +28,7 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
   const [whenTouched, setWhenTouched] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [media, setMedia] = useState<Uploaded[]>([]);
+  const [cover, setCover] = useState<ReelCover>({});
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +38,12 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
     for (const u of units) for (const a of u.accounts) if (selected.has(a.id)) set.add(a.platform);
     return [...set];
   }, [units, selected]);
+  const previewNames = useMemo(() => {
+    const names: Partial<Record<Platform, string>> = {};
+    for (const u of units) for (const a of u.accounts) if (selected.has(a.id) && !names[a.platform]) names[a.platform] = a.displayName;
+    return names;
+  }, [units, selected]);
+  const reelVideo = format === "REEL" ? media.find((m) => m.kind === "VIDEO") : undefined;
   const captionLen = [...caption].length;
   const overLimit = selectedPlatforms.filter((p) => captionLen > CAPTION_LIMITS[p]);
   const mediaIssues = media.flatMap((m) => m.issues.filter((i) => selectedPlatforms.includes(i.platform)));
@@ -66,7 +75,14 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
     const res = await fetch("/api/posts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ format, caption, scheduledLocal: when, mediaIds: media.map((m) => m.id), accountIds: [...selected] }),
+      body: JSON.stringify({
+        format,
+        caption,
+        scheduledLocal: when,
+        mediaIds: media.map((m) => m.id),
+        accountIds: [...selected],
+        ...(reelVideo ? { coverMediaId: cover.mediaId ?? null, coverOffsetMs: cover.offsetMs ?? null } : {}),
+      }),
     });
     setBusy(false);
     if (!res.ok) {
@@ -114,6 +130,12 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
               <IconAlert size="sm" /><span>{warnings.join(" ")}</span>
             </div>
           )}
+          {reelVideo && <ReelCoverPicker key={reelVideo.id} video={reelVideo} value={cover} onChange={setCover} onError={setError} />}
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Pré-visualização por canal</label>
+            <ChannelPreview format={format} caption={caption} media={media} platforms={selectedPlatforms} names={previewNames} coverUrl={reelVideo ? cover.url : undefined} />
+            <small className="hint">Aproximação de como cada rede exibe a postagem; o resultado real pode variar.</small>
+          </div>
         </section>
 
         <hr className="divider" />
@@ -122,7 +144,7 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
           <h2 className="section-title"><span className="num">2</span> Quando publicar</h2>
           <div className="field">
             <label htmlFor="when">Data e hora (no horário local de cada unidade)</label>
-            <input id="when" type="datetime-local" value={when} min={minLocal()} onChange={(e) => setWhen(e.target.value)} onBlur={() => setWhenTouched(true)} aria-invalid={Boolean(whenError) || undefined} aria-describedby="when-hint" required style={{ maxWidth: 280 }} />
+            <input id="when" type="datetime-local" value={when} min={minLocal()} suppressHydrationWarning onChange={(e) => setWhen(e.target.value)} onBlur={() => setWhenTouched(true)} aria-invalid={Boolean(whenError) || undefined} aria-describedby="when-hint" required style={{ maxWidth: 280 }} />
             {whenError ? <span className="field-error"><IconAlert size="sm" />{whenError}</span> : null}
             <small id="when-hint" className="hint">Unidades em fusos diferentes publicam no mesmo horário local, cada uma no seu fuso.</small>
           </div>

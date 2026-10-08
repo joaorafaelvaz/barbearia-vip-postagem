@@ -39,6 +39,7 @@ export async function publishFacebookVideoPhased(
   token: string,
   videoUrl: string,
   description: string,
+  coverImageUrl?: string,
 ): Promise<PublishResult> {
   const start = await postForm(f, `${GRAPH_BASE}/${pageId}/${kind}`, { upload_phase: "start", access_token: token });
   const videoId = start.video_id;
@@ -52,6 +53,7 @@ export async function publishFacebookVideoPhased(
     ...(kind === "video_reels" ? { video_state: "PUBLISHED", description } : {}),
   });
   const postId = typeof finish.post_id === "string" ? finish.post_id : videoId;
+  if (kind === "video_reels" && coverImageUrl) await setVideoThumbnail(f, videoId, token, coverImageUrl);
   return kind === "video_reels"
     ? { externalPostId: videoId, externalUrl: `https://www.facebook.com/reel/${videoId}` }
     : { externalPostId: postId };
@@ -64,4 +66,24 @@ export async function publishFacebookPhotoStory(f: FetchLike, pageId: string, to
   const story = await postForm(f, `${GRAPH_BASE}/${pageId}/photo_stories`, { photo_id: photoId, access_token: token });
   const postId = typeof story.post_id === "string" ? story.post_id : photoId;
   return { externalPostId: postId };
+}
+
+/**
+ * Capa personalizada do Reel: POST /{video-id}/thumbnails com a imagem em multipart
+ * (a API não aceita URL). Falha aqui não derruba a publicação, que já saiu.
+ */
+export async function setVideoThumbnail(f: FetchLike, videoId: string, token: string, imageUrl: string): Promise<boolean> {
+  try {
+    const img = await safeFetch(f, imageUrl);
+    if (!img.ok) return false;
+    const bytes = await img.arrayBuffer();
+    const form = new FormData();
+    form.set("source", new Blob([bytes], { type: "image/jpeg" }), "cover.jpg");
+    form.set("is_preferred", "true");
+    form.set("access_token", token);
+    const res = await safeFetch(f, `${GRAPH_BASE}/${videoId}/thumbnails`, { method: "POST", body: form });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

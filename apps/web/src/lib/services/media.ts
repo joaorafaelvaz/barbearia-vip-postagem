@@ -93,6 +93,7 @@ export async function uploadMedia(
 ): Promise<UploadResult> {
   const ext = EXT[file.type];
   if (!ext) throw new HttpError(400, "Formato não suportado. Use JPG, PNG, GIF, MP4 ou MOV.");
+  if (file.bytes.length === 0) throw new HttpError(400, "O arquivo está vazio.");
   const isVideo = (VIDEO_MIME_TYPES as readonly string[]).includes(file.type);
   const isImage = (IMAGE_MIME_TYPES as readonly string[]).includes(file.type);
   if (!isVideo && !isImage) throw new HttpError(400, "Formato não suportado.");

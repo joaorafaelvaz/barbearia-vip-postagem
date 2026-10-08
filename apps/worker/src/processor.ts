@@ -20,7 +20,7 @@ export interface TargetRecord {
   status: string;
   attempts: number;
   scheduledAt: Date;
-  post: { caption: string; media: TargetMedia[]; format?: PostFormat };
+  post: { caption: string; media: TargetMedia[]; format?: PostFormat; cover?: { imageUrl?: string; offsetMs?: number } };
   account: {
     id: string;
     organizationId: string;
@@ -96,6 +96,7 @@ export async function processTarget(deps: ProcessorDeps, postTargetId: string): 
       format: target.post.format ?? "FEED",
       caption: target.post.caption,
       media: target.post.media,
+      ...(target.post.cover ? { cover: target.post.cover } : {}),
     };
     const publisher = deps.publisherFor(target.account.platform);
     const parts = await storyParts(deps, target);

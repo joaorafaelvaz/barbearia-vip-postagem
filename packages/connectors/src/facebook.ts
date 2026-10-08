@@ -37,7 +37,7 @@ export class FacebookPagePublisher implements Publisher {
     }
     if (format === "REEL") {
       if (!video || images.length > 0) throw new PublishError("VALIDATION", "Reel exige exatamente um vídeo.");
-      return publishFacebookVideoPhased(this.fetch, "video_reels", pageId, token, video, caption);
+      return publishFacebookVideoPhased(this.fetch, "video_reels", pageId, token, video, caption, input.cover?.imageUrl);
     }
 
     if (video) {
