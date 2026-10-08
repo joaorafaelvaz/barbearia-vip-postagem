@@ -1,4 +1,4 @@
-# Produção: nginx no host faz proxy para 127.0.0.1:3022.
+# Produção: nginx no host faz proxy para 127.0.0.1:${WEB_PORT} (WEB_PORT no .env.production, padrão 3022).
 # Uso: docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 services:
   postgres:
@@ -42,10 +42,10 @@ services:
     env_file: .env.production
     environment:
       NODE_ENV: production
-      PORT: "3022"
+      PORT: "${WEB_PORT:-3022}"
       HOSTNAME: "0.0.0.0"
     ports:
-      - "127.0.0.1:3022:3022"
+      - "127.0.0.1:${WEB_PORT:-3022}:${WEB_PORT:-3022}"
     volumes:
       - ./data/uploads:/app/apps/web/public/uploads
     depends_on:

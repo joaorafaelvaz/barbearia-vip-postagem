@@ -137,30 +137,39 @@ decodifica vídeo. Limite de upload: 10MB por imagem, 300MB por vídeo.
 Em desenvolvimento as mídias ficam em `apps/web/public/uploads`. Em produção configure um
 bucket S3 compatível (`S3_*` no `.env`), pois as plataformas baixam a imagem de uma URL pública.
 
-## Deploy (postagem.barbearia.vip)
+## Deploy
 
-Produção roda em Docker Compose (`docker-compose.prod.yml`: web na porta 3022 só em
-127.0.0.1, worker, Postgres e Redis) com o Nginx do host como proxy reverso e HTTPS do
-Let's Encrypt. Os arquivos estão em `deploy/`.
+Produção roda em Docker Compose (`docker-compose.prod.yml`: web em 127.0.0.1 na porta
+`WEB_PORT`, worker, Postgres e Redis) com o Nginx do host como proxy reverso e HTTPS do
+Let's Encrypt. Os arquivos estão em `deploy/`. Domínio e porta são escolhidos na instalação
+e ficam gravados em `.env.production` (`AUTH_URL`, `APP_DOMAIN`, `WEB_PORT`).
 
 ### Primeira instalação (servidor Ubuntu/Debian limpo)
 
-1. Aponte o registro A de `postagem.barbearia.vip` para o IP do servidor (já feito).
+1. Aponte o registro A do domínio escolhido para o IP do servidor.
 2. No servidor, como root:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/joaorafaelvaz/barbearia-vip-postagem/main/deploy/setup-server.sh -o setup-server.sh
-sudo bash setup-server.sh https://github.com/joaorafaelvaz/barbearia-vip-postagem.git seu-email@dominio.com
+sudo bash setup-server.sh
 ```
 
-   O script instala Docker, Nginx e certbot, clona o repositório em `/opt/postagem`, cria
-   `.env.production` com segredos gerados, emite o certificado, aplica o Nginx de
-   `deploy/nginx/postagem.barbearia.vip.conf` e sobe a aplicação (`deploy/deploy.sh`).
+   O script pergunta a URL do repositório, o **domínio**, a **porta interna do web** e o
+   e-mail do Let's Encrypt (Enter aceita o padrão: `postagem.barbearia.vip`, `3022`). Para
+   rodar sem perguntas, passe as respostas no ambiente:
+   `DOMAIN=app.exemplo.com PORT=3100 LE_EMAIL=eu@exemplo.com sudo -E bash setup-server.sh`.
+   Depois instala Docker, Nginx e certbot, clona o repositório em `/opt/postagem`, cria
+   `.env.production` com segredos gerados e com domínio/porta escolhidos, emite o certificado,
+   gera o Nginx a partir de `deploy/nginx/site.conf.template` e sobe a aplicação
+   (`deploy/deploy.sh`).
 3. Preencha `META_APP_ID`, `META_APP_SECRET`, `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`
    em `/opt/postagem/.env.production` e rode `bash deploy/deploy.sh` de novo.
 4. Nos apps da Meta e do Google, cadastre os redirects
-   `https://postagem.barbearia.vip/api/oauth/meta/callback` e
-   `https://postagem.barbearia.vip/api/oauth/google/callback`.
+   `https://SEU-DOMINIO/api/oauth/meta/callback` e
+   `https://SEU-DOMINIO/api/oauth/google/callback` (o script imprime as URLs no final).
+
+Para trocar domínio ou porta depois, rode o `setup-server.sh` de novo com os novos valores:
+ele atualiza `.env.production`, o Nginx e o certificado, e o `deploy.sh` passa a usar a nova porta.
 
 ### Atualizações
 

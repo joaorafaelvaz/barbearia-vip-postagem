@@ -11,6 +11,8 @@ if [ ! -f .env.production ]; then
 fi
 
 ln -sf .env.production .env
+WEB_PORT="$(grep -E "^WEB_PORT=" .env.production | cut -d= -f2- | tr -d "[:space:]")"
+WEB_PORT="${WEB_PORT:-3022}"
 
 echo "==> Atualizando código ($BRANCH)"
 git fetch --all --prune
@@ -26,9 +28,9 @@ docker image prune -f >/dev/null
 
 echo "==> Status"
 docker compose --env-file .env.production -f docker-compose.prod.yml ps
-echo "==> Aguardando o web responder em 127.0.0.1:3022"
+echo "==> Aguardando o web responder em 127.0.0.1:$WEB_PORT"
 for i in $(seq 1 30); do
-  code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3022/login || true)
+  code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$WEB_PORT/login || true)
   if [ "$code" = "200" ]; then echo "web: HTTP 200 (ok)"; break; fi
   sleep 2
 done
