@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@prisma/client", "bullmq", "ioredis", "@aws-sdk/client-s3"],
   experimental: {
     serverActions: { bodySizeLimit: "12mb" },
+    // Com middleware.ts presente, o Next corta o corpo das rotas em 10MB por padrão.
+    // Uploads de vídeo vão até 300MB (MAX_VIDEO_BYTES); nginx aceita 320m.
+    middlewareClientMaxBodySize: "320mb",
   },
 };
 
