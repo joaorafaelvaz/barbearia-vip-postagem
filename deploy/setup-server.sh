@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Primeira instalação em um servidor Ubuntu/Debian limpo (rodar como root ou com sudo).
 # Uso: sudo bash deploy/setup-server.sh [url-do-repositorio-git] [email-para-letsencrypt]
-# O script pergunta domínio e porta (ou usa DOMAIN=, PORT=, REPO_URL=, LE_EMAIL= do ambiente).
+# O script pergunta domínio e porta (ou usa DOMAIN=, PORT=, REPO_URL=, LE_EMAIL=, BRANCH= do ambiente).
+# Pode ser rodado de novo: atualiza o código, o .env.production, o Nginx e o certificado.
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/postagem}"
@@ -46,6 +47,10 @@ if [ ! -d "$APP_DIR/.git" ]; then
   git clone "$REPO_URL" "$APP_DIR"
 fi
 cd "$APP_DIR"
+echo "==> Atualizando código (${BRANCH:-main})"
+git fetch --all --prune
+git checkout "${BRANCH:-main}"
+git pull --ff-only
 mkdir -p data/uploads /var/www/certbot
 ln -sf .env.production .env   # o Compose lê .env sozinho: comandos avulsos dispensam --env-file
 chown -R 1000:1000 data/uploads
@@ -89,6 +94,7 @@ echo "==> Certificado Let's Encrypt"
 certbot certonly --webroot -w /var/www/certbot -d "$DOMAIN" --non-interactive --agree-tos -m "$LE_EMAIL"
 
 echo "==> Nginx definitivo (HTTPS + proxy em 127.0.0.1:$PORT)"
+[ -f deploy/nginx/site.conf.template ] || { echo "Falta deploy/nginx/site.conf.template: o código em $APP_DIR está desatualizado (git pull)." >&2; exit 1; }
 render_nginx deploy/nginx/site.conf.template /etc/nginx/sites-available/$DOMAIN
 nginx -t && systemctl reload nginx
 
