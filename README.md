@@ -181,6 +181,32 @@ Faz `git pull`, reconstrói as imagens, aplica as migrations (serviço `migrate`
 web e worker. Logs: `docker compose -f docker-compose.prod.yml logs -f web worker` (o `.env` é um link para
 `.env.production`, então os comandos do Compose não precisam de `--env-file`).
 
+### Backup e migração para outro servidor
+
+Tudo que precisa ser preservado: o banco (volume `pgdata`), a pasta `data/uploads` e o
+`.env.production` (o `APP_ENCRYPTION_KEY` descriptografa os tokens das contas conectadas:
+sem ele, todas as contas teriam de ser reconectadas). O Redis é descartável: o worker
+reenfileira pelo banco qualquer agendamento sem job em até 5 minutos.
+
+```bash
+# no servidor antigo
+cd /opt/postagem && bash deploy/backup.sh          # gera backups/postagem-backup-<data>.tar.gz
+```
+
+Migração passo a passo:
+
+1. No servidor antigo, pare o worker para nada ser publicado durante a troca e gere o backup:
+   `docker compose -f docker-compose.prod.yml stop worker && bash deploy/backup.sh`.
+2. Copie o arquivo para o servidor novo: `scp backups/postagem-backup-*.tar.gz root@NOVO-IP:/root/`.
+3. Aponte o registro A do domínio para o IP novo (baixe o TTL algumas horas antes).
+4. No servidor novo, rode o `setup-server.sh` (precisa do DNS já apontando, para o certificado).
+5. No servidor novo: `cd /opt/postagem && bash deploy/restore.sh /root/postagem-backup-<data>.tar.gz`.
+   O restore mantém domínio e porta deste servidor, traz segredos e integrações do backup,
+   recria o banco, restaura os uploads, limpa a fila e sobe a aplicação.
+6. Entre no painel e confira as postagens agendadas; desligue o servidor antigo.
+
+O mesmo `backup.sh` serve para backups periódicos (cron), e o `restore.sh` para voltar no tempo.
+
 ### Mídia em produção
 
 Sem S3 configurado, as mídias ficam em `/opt/postagem/data/uploads` (volume do compose) e o

@@ -182,8 +182,8 @@ export function prismaReconcileRepository(prisma: PrismaClient): ReconcileReposi
     async listStalePublishing(before) {
       return prisma.postTarget.findMany({ where: { status: "PUBLISHING", updatedAt: { lt: before } }, select: { id: true }, take: 500 });
     },
-    async listOverdueScheduled(before) {
-      return prisma.postTarget.findMany({ where: { status: "SCHEDULED", scheduledAt: { lt: before } }, select: { id: true, scheduledAt: true }, take: 500 });
+    async listScheduled(createdBefore) {
+      return prisma.postTarget.findMany({ where: { status: "SCHEDULED", createdAt: { lt: createdBefore } }, select: { id: true, scheduledAt: true }, orderBy: { scheduledAt: "asc" }, take: 2000 });
     },
     async resetToScheduled(id, note) {
       await prisma.postTarget.update({ where: { id }, data: { status: "SCHEDULED", lastError: note } });
