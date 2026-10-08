@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Restaura um backup gerado por deploy/backup.sh neste servidor (depois do setup-server.sh).
 # Uso: bash deploy/restore.sh <postagem-backup-....tar.gz>   (rodar em /opt/postagem)
-# Mantém AUTH_URL/APP_DOMAIN/WEB_PORT deste servidor e traz o resto do .env.production do backup.
+# Mantém deste servidor: AUTH_URL/APP_DOMAIN/WEB_PORT e as credenciais locais de banco e Redis
+# (POSTGRES_PASSWORD/DATABASE_URL/REDIS_URL: o Postgres daqui foi inicializado com a senha do setup).
+# Traz do backup tudo o mais: APP_ENCRYPTION_KEY, AUTH_SECRET, META_*, GOOGLE_*, S3_*.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 FILE="${1:?Informe o arquivo de backup}"
@@ -13,10 +15,10 @@ tar -C "$WORK" -xzf "$FILE"
 
 compose() { docker compose --env-file .env.production -f docker-compose.prod.yml "$@"; }
 
-echo "==> .env.production: segredos e integrações do backup; domínio e porta deste servidor"
+echo "==> .env.production: segredos e integrações do backup; domínio, porta e credenciais locais deste servidor"
 if [ -f .env.production ]; then
   cp .env.production ".env.production.bak-$(date +%Y%m%d-%H%M%S)"
-  KEEP="$(grep -E '^(AUTH_URL|APP_DOMAIN|WEB_PORT)=' .env.production || true)"
+  KEEP="$(grep -E '^(AUTH_URL|APP_DOMAIN|WEB_PORT|POSTGRES_PASSWORD|DATABASE_URL|REDIS_URL)=' .env.production || true)"
 else
   KEEP=""
 fi
