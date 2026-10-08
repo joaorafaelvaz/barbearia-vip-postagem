@@ -121,7 +121,14 @@ export async function uploadMedia(
   }
 
   const key = `${organizationId}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
-  const stored = await deps.storage.put(key, file.bytes, file.type);
+  let stored: StoredFile;
+  try {
+    stored = await deps.storage.put(key, file.bytes, file.type);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code ?? "";
+    console.error("[media] falha ao gravar arquivo", { key, bytes: file.bytes.length, code }, err);
+    throw new HttpError(500, `Falha ao gravar o arquivo no servidor${code ? ` (${code})` : ""}. Verifique a pasta de uploads.`);
+  }
   const asset = await deps.prisma.mediaAsset.create({
     data: {
       organizationId,

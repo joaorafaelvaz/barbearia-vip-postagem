@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { HttpError, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { getStorage, uploadMedia } from "@/lib/services/media";
+import { getStorage, MAX_VIDEO_BYTES, uploadMedia } from "@/lib/services/media";
 import { requireSession } from "@/lib/session";
 
 /**
@@ -10,7 +10,17 @@ import { requireSession } from "@/lib/session";
  */
 export const POST = route(async (req: Request) => {
   const s = await requireSession();
-  const form = await req.formData();
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > MAX_VIDEO_BYTES + 1024 * 1024) {
+    throw new HttpError(413, `Arquivo acima do limite de ${MAX_VIDEO_BYTES / 1024 / 1024}MB.`);
+  }
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch (err) {
+    console.error("[media] falha ao ler multipart", { declared }, err);
+    throw new HttpError(400, "Não foi possível ler o arquivo enviado. Tente novamente.");
+  }
   const file = form.get("file");
   if (!(file instanceof File)) throw new HttpError(400, "Envie o arquivo no campo 'file'.");
   const bytes = Buffer.from(await file.arrayBuffer());
