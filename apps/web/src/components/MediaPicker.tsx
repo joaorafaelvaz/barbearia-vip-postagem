@@ -9,6 +9,7 @@ export interface Uploaded {
   kind: "IMAGE" | "VIDEO";
   publicUrl: string;
   durationSec: number | null;
+  bytes: number;
   issues: Array<{ platform: Platform; message: string }>;
 }
 

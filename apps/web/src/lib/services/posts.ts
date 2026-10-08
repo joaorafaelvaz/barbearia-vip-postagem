@@ -1,4 +1,4 @@
-import { localToUtc, validateCaption, validateFormat, validateMediaSet, type MediaKind, type Platform, type PostFormat } from "@fsp/core";
+import { localToUtc, validateCaption, validateFormat, validateMediaSet, type FormatMedia, type MediaKind, type Platform, type PostFormat } from "@fsp/core";
 import { enqueuePublish, requeuePublish, dequeuePublish, type PublishQueueLike } from "@fsp/queue";
 import type { PrismaClient } from "@fsp/db";
 import { z } from "zod";
@@ -29,15 +29,16 @@ interface AccountRow {
 export function buildTargets(
   input: Pick<CreatePostInput, "caption" | "scheduledLocal"> & { format?: PostFormat },
   accounts: readonly AccountRow[],
-  mediaKinds: readonly MediaKind[],
+  media: readonly (MediaKind | FormatMedia)[],
   now: Date = new Date(),
 ): Array<{ connectedAccountId: string; scheduledAt: Date }> {
   const platforms = [...new Set(accounts.map((a) => a.platform))];
   const format = input.format ?? "FEED";
+  const mediaKinds = media.map((m) => (typeof m === "string" ? m : m.kind));
   const issues = [
     ...validateCaption(input.caption, platforms, mediaKinds.length > 0),
     ...(format === "FEED" ? validateMediaSet(mediaKinds, platforms) : []),
-    ...validateFormat(format, platforms, mediaKinds),
+    ...validateFormat(format, platforms, media),
   ];
   if (issues.length > 0) {
     throw new HttpError(400, issues.map((i) => i.message).join(" "), issues);
@@ -73,13 +74,16 @@ export async function createPost(
 
   const media = await deps.prisma.mediaAsset.findMany({
     where: { id: { in: input.mediaIds }, organizationId },
-    select: { id: true, kind: true },
+    select: { id: true, kind: true, durationSec: true, bytes: true },
   });
   if (media.length !== input.mediaIds.length) throw new HttpError(400, "Mídia inválida.");
-  const kindById = new Map(media.map((m) => [m.id, m.kind as MediaKind]));
-  const mediaKinds = input.mediaIds.map((id) => kindById.get(id) ?? "IMAGE");
+  const byId = new Map(media.map((m) => [m.id, m]));
+  const mediaInfo: FormatMedia[] = input.mediaIds.map((id) => {
+    const m = byId.get(id);
+    return { kind: (m?.kind ?? "IMAGE") as MediaKind, durationSec: m?.durationSec ?? null, bytes: m?.bytes ?? 0 };
+  });
 
-  const targets = buildTargets(input, accounts as AccountRow[], mediaKinds);
+  const targets = buildTargets(input, accounts as AccountRow[], mediaInfo);
 
   const post = await deps.prisma.$transaction(async (tx) => {
     const created = await tx.post.create({

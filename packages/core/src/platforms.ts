@@ -85,17 +85,59 @@ export interface FormatIssue {
   message: string;
 }
 
+/** Mídia com o que a regra de formato precisa; strings são aceitas para compatibilidade. */
+export interface FormatMedia {
+  kind: "IMAGE" | "VIDEO";
+  /** Duração em segundos (vídeo); 0/null quando desconhecida. */
+  durationSec?: number | null;
+  bytes?: number;
+}
+
+interface FormatVideoRule {
+  maxSeconds: number;
+  maxBytes?: number;
+}
+
+/**
+ * Limites de vídeo por formato e plataforma (documentação oficial da Meta):
+ * Story IG/FB até 60s (IG até 100MB); Reel IG até 15min/300MB, Reel FB até 90s.
+ */
+export const FORMAT_VIDEO_RULES: Partial<Record<PostFormat, Partial<Record<Platform, FormatVideoRule>>>> = {
+  STORY: {
+    INSTAGRAM: { maxSeconds: 60, maxBytes: 100 * 1024 * 1024 },
+    FACEBOOK_PAGE: { maxSeconds: 60 },
+  },
+  REEL: {
+    INSTAGRAM: { maxSeconds: 15 * 60, maxBytes: 300 * 1024 * 1024 },
+    FACEBOOK_PAGE: { maxSeconds: 90 },
+  },
+};
+
+function toFormatMedia(m: "IMAGE" | "VIDEO" | FormatMedia): FormatMedia {
+  return typeof m === "string" ? { kind: m } : m;
+}
+
+function fmtSeconds(sec: number): string {
+  if (sec < 120) return `${Math.round(sec)}s`;
+  const m = Math.floor(sec / 60);
+  const r = Math.round(sec % 60);
+  return r === 0 ? `${m}min` : `${m}min${r}s`;
+}
+
 /**
  * Regras do formato: Story = exatamente uma mídia (imagem ou vídeo), legenda ignorada;
- * Reel = exatamente um vídeo; ambos só em Facebook e Instagram.
+ * Reel = exatamente um vídeo; ambos só em Facebook e Instagram. Vídeos respeitam a
+ * duração e o tamanho máximos de cada plataforma para o formato.
  */
 export function validateFormat(
   format: PostFormat,
   platforms: readonly Platform[],
-  mediaKinds: readonly ("IMAGE" | "VIDEO")[],
+  media: readonly ("IMAGE" | "VIDEO" | FormatMedia)[],
 ): FormatIssue[] {
   const issues: FormatIssue[] = [];
   if (format === "FEED") return issues;
+  const items = media.map(toFormatMedia);
+  const mediaKinds = items.map((m) => m.kind);
   for (const p of platforms) {
     if (!FORMAT_SUPPORT[format].includes(p)) {
       issues.push({ platform: p, message: `${PLATFORM_LABELS[p]} não aceita ${POST_FORMAT_LABELS[format]}: desmarque essas contas.` });
@@ -106,6 +148,22 @@ export function validateFormat(
   }
   if (format === "REEL") {
     if (mediaKinds.length !== 1 || mediaKinds[0] !== "VIDEO") issues.push({ platform: null, message: "Reel precisa de exatamente um vídeo." });
+  }
+  const video = items.find((m) => m.kind === "VIDEO");
+  const rules = FORMAT_VIDEO_RULES[format];
+  if (video && rules) {
+    const dur = video.durationSec ?? 0;
+    for (const p of platforms) {
+      const rule = rules[p];
+      if (!rule) continue;
+      const label = `${POST_FORMAT_LABELS[format]} no ${PLATFORM_LABELS[p]}`;
+      if (dur > 0 && dur > rule.maxSeconds) {
+        issues.push({ platform: p, message: `${label} aceita vídeo de até ${fmtSeconds(rule.maxSeconds)} (atual ${fmtSeconds(dur)}). Corte o vídeo ou publique como ${format === "STORY" ? "Reel" : "Feed"}.` });
+      }
+      if (rule.maxBytes && video.bytes && video.bytes > rule.maxBytes) {
+        issues.push({ platform: p, message: `${label} aceita vídeo de até ${Math.round(rule.maxBytes / 1024 / 1024)}MB (atual ${Math.round(video.bytes / 1024 / 1024)}MB).` });
+      }
+    }
   }
   return issues;
 }

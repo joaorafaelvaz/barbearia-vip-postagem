@@ -5,8 +5,8 @@ import { IconImage, IconMegaphone, IconVideo } from "./Icons";
 
 const OPTIONS: Array<{ value: PostFormat; icon: React.ReactNode; hint: string }> = [
   { value: "FEED", icon: <IconImage size="sm" />, hint: "Imagens, carrossel ou vídeo no feed. Única opção para o Google Meu Negócio." },
-  { value: "STORY", icon: <IconMegaphone size="sm" />, hint: "Uma imagem ou um vídeo, some em 24h. Facebook e Instagram. A legenda não é enviada." },
-  { value: "REEL", icon: <IconVideo size="sm" />, hint: "Um vídeo vertical. Facebook e Instagram." },
+  { value: "STORY", icon: <IconMegaphone size="sm" />, hint: "Uma imagem ou um vídeo de até 60s, some em 24h. Facebook e Instagram. A legenda não é enviada." },
+  { value: "REEL", icon: <IconVideo size="sm" />, hint: "Um vídeo vertical: até 90s no Facebook, até 15min no Instagram." },
 ];
 
 export function FormatPicker({ value, onChange }: { value: PostFormat; onChange: (f: PostFormat) => void }) {

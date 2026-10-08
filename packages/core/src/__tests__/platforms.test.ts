@@ -100,6 +100,20 @@ describe("validateFormat", () => {
     expect(validateFormat("STORY", ["INSTAGRAM"], ["IMAGE", "IMAGE"]).length).toBe(1);
     expect(validateFormat("STORY", ["GOOGLE_BUSINESS_PROFILE"], ["IMAGE"])[0]?.message).toMatch(/não aceita Story/);
   });
+  it("Story: vídeo acima de 60s é rejeitado no Instagram e no Facebook", () => {
+    const issues = validateFormat("STORY", ["INSTAGRAM", "FACEBOOK_PAGE"], [{ kind: "VIDEO", durationSec: 105, bytes: 18e6 }]);
+    expect(issues.length).toBe(2);
+    expect(issues[0]?.message).toContain("até 60s (atual 105s)");
+    expect(validateFormat("STORY", ["INSTAGRAM"], [{ kind: "VIDEO", durationSec: 45 }])).toEqual([]);
+  });
+  it("Story: vídeo acima de 100MB é rejeitado só no Instagram", () => {
+    const issues = validateFormat("STORY", ["INSTAGRAM", "FACEBOOK_PAGE"], [{ kind: "VIDEO", durationSec: 30, bytes: 150 * 1024 * 1024 }]);
+    expect(issues.map((i) => i.platform)).toEqual(["INSTAGRAM"]);
+  });
+  it("Reel: Facebook limita a 90s, Instagram a 15min", () => {
+    expect(validateFormat("REEL", ["INSTAGRAM"], [{ kind: "VIDEO", durationSec: 120 }])).toEqual([]);
+    expect(validateFormat("REEL", ["FACEBOOK_PAGE"], [{ kind: "VIDEO", durationSec: 120 }])[0]?.message).toMatch(/até 90s/);
+  });
   it("Reel: exatamente um vídeo", () => {
     expect(validateFormat("REEL", ["INSTAGRAM"], ["VIDEO"])).toEqual([]);
     expect(validateFormat("REEL", ["INSTAGRAM"], ["IMAGE"])[0]?.message).toMatch(/um vídeo/);

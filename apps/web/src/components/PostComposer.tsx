@@ -39,7 +39,7 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
   const overLimit = selectedPlatforms.filter((p) => captionLen > CAPTION_LIMITS[p]);
   const mediaIssues = media.flatMap((m) => m.issues.filter((i) => selectedPlatforms.includes(i.platform)));
   const kinds = media.map((m) => m.kind as MediaKind);
-  const setIssues = [...(format === "FEED" ? validateMediaSet(kinds, selectedPlatforms) : []), ...validateFormat(format, selectedPlatforms, kinds)];
+  const setIssues = [...(format === "FEED" ? validateMediaSet(kinds, selectedPlatforms) : []), ...validateFormat(format, selectedPlatforms, media.map((m) => ({ kind: m.kind, durationSec: m.durationSec, bytes: m.bytes })))];
   const warnings = [...new Set([...setIssues, ...mediaIssues].map((i) => i.message))];
   const needsMedia = (selectedPlatforms.includes("INSTAGRAM") || format !== "FEED") && media.length === 0;
   const whenInPast = when !== "" && new Date(when).getTime() < Date.now();
