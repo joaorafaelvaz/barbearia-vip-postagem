@@ -3,7 +3,7 @@ import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
 import { createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken } from "@fsp/connectors";
-import { IMPORT_JOB_NAME, METRICS_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PublishJobData } from "@fsp/core";
+import { IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
 import { createPublishQueue, createRedisConnection, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
 import { Worker } from "bullmq";
@@ -11,7 +11,9 @@ import { importPosts } from "./imports.js";
 import { collectMetrics } from "./metrics.js";
 import { reconcileTargets } from "./reconcile.js";
 import { processTarget, resolveAccessToken, type ProcessorDeps } from "./processor.js";
-import { prismaImportRepository, prismaMetricsRepository, prismaReconcileRepository, prismaTargetRepository } from "./repository.js";
+import { prismaImportRepository, prismaMetricsRepository, prismaReconcileRepository, prismaSegmentRepository, prismaTargetRepository } from "./repository.js";
+import { ensureStorySegments, ffmpegSplitter, type SegmentDeps } from "./segments.js";
+import { getStorage, uploadsDir } from "./storage.js";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -31,10 +33,19 @@ async function main(): Promise<void> {
     redirectUri: `${process.env.AUTH_URL ?? "http://localhost:3022"}/api/oauth/google/callback`,
   };
 
+  const log = (msg: string, meta?: Record<string, unknown>) => console.log(JSON.stringify({ ts: new Date().toISOString(), msg, ...meta }));
+  const segmentDeps: SegmentDeps = {
+    repo: prismaSegmentRepository(prisma),
+    storage: await getStorage(),
+    splitter: ffmpegSplitter(),
+    log,
+  };
+
   const deps: ProcessorDeps = {
     repo: prismaTargetRepository(prisma),
     cipher,
     publisherFor: (platform) => createPublisher(platform),
+    segments: { ensure: (mediaId) => ensureStorySegments(segmentDeps, mediaId) },
     google: {
       async refresh(refreshToken) {
         requireEnv("GOOGLE_CLIENT_ID");
@@ -42,7 +53,7 @@ async function main(): Promise<void> {
         return { accessToken: t.accessToken, expiresAt: t.expiresAt };
       },
     },
-    log: (msg, meta) => console.log(JSON.stringify({ ts: new Date().toISOString(), msg, ...meta })),
+    log,
   };
 
   const metricsRepo = prismaMetricsRepository(prisma);
@@ -54,6 +65,10 @@ async function main(): Promise<void> {
     async (job) => {
       if (job.name === RECONCILE_JOB_NAME) {
         return reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
+      }
+      if (job.name === PREPARE_MEDIA_JOB_NAME) {
+        const parts = await ensureStorySegments(segmentDeps, (job.data as PrepareMediaJobData).mediaId);
+        return { parts: parts.length };
       }
       if (job.name === IMPORT_JOB_NAME) {
         const data = job.data as ImportJobData;
@@ -107,7 +122,7 @@ async function main(): Promise<void> {
   await ensureReconcileScheduler(queue);
   // Reconcilia já na subida: retoma o que ficou preso enquanto o worker esteve fora.
   await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
-  console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, metricsScheduler: "6h" }));
+  console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, metricsScheduler: "6h", uploads: process.env.S3_BUCKET ? "s3" : uploadsDir() }));
 
   const shutdown = async () => {
     console.log("shutting down worker...");

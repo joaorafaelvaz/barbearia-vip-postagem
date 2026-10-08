@@ -96,6 +96,34 @@ export interface FormatMedia {
 interface FormatVideoRule {
   maxSeconds: number;
   maxBytes?: number;
+  /** Acima de maxSeconds o vídeo é cortado automaticamente em partes, em vez de rejeitado. */
+  split?: boolean;
+}
+
+/** Stories aceitam vídeo de até 60s (Instagram e Facebook). */
+export const STORY_MAX_VIDEO_SECONDS = 60;
+/** Alvo de cada parte no corte automático: folga para o arquivo gerado nunca passar de 60s. */
+export const STORY_SEGMENT_TARGET_SECONDS = 59;
+/** Teto de partes geradas por vídeo (10 Stories seguidos). */
+export const STORY_MAX_PARTS = 10;
+
+export interface VideoSegment {
+  index: number;
+  startSec: number;
+  lengthSec: number;
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * Plano de corte para Stories: partes iguais de até ~59s. Partes iguais evitam um
+ * último pedaço curto demais (o Instagram exige no mínimo 3s).
+ */
+export function planStorySegments(durationSec: number): VideoSegment[] {
+  if (!(durationSec > STORY_MAX_VIDEO_SECONDS)) return [{ index: 0, startSec: 0, lengthSec: round2(durationSec) }];
+  const parts = Math.ceil(durationSec / STORY_SEGMENT_TARGET_SECONDS);
+  const len = durationSec / parts;
+  return Array.from({ length: parts }, (_, i) => ({ index: i, startSec: round2(i * len), lengthSec: round2(len) }));
 }
 
 /**
@@ -104,8 +132,8 @@ interface FormatVideoRule {
  */
 export const FORMAT_VIDEO_RULES: Partial<Record<PostFormat, Partial<Record<Platform, FormatVideoRule>>>> = {
   STORY: {
-    INSTAGRAM: { maxSeconds: 60, maxBytes: 100 * 1024 * 1024 },
-    FACEBOOK_PAGE: { maxSeconds: 60 },
+    INSTAGRAM: { maxSeconds: STORY_MAX_VIDEO_SECONDS, maxBytes: 100 * 1024 * 1024, split: true },
+    FACEBOOK_PAGE: { maxSeconds: STORY_MAX_VIDEO_SECONDS, split: true },
   },
   REEL: {
     INSTAGRAM: { maxSeconds: 15 * 60, maxBytes: 300 * 1024 * 1024 },
@@ -117,7 +145,7 @@ function toFormatMedia(m: "IMAGE" | "VIDEO" | FormatMedia): FormatMedia {
   return typeof m === "string" ? { kind: m } : m;
 }
 
-function fmtSeconds(sec: number): string {
+export function formatSeconds(sec: number): string {
   if (sec < 120) return `${Math.round(sec)}s`;
   const m = Math.floor(sec / 60);
   const r = Math.round(sec % 60);
@@ -158,9 +186,17 @@ export function validateFormat(
       if (!rule) continue;
       const label = `${POST_FORMAT_LABELS[format]} no ${PLATFORM_LABELS[p]}`;
       if (dur > 0 && dur > rule.maxSeconds) {
-        issues.push({ platform: p, message: `${label} aceita vídeo de até ${fmtSeconds(rule.maxSeconds)} (atual ${fmtSeconds(dur)}). Corte o vídeo ou publique como ${format === "STORY" ? "Reel" : "Feed"}.` });
+        if (rule.split) {
+          const parts = planStorySegments(dur).length;
+          if (parts > STORY_MAX_PARTS) {
+            issues.push({ platform: p, message: `Story: vídeo de ${formatSeconds(dur)} viraria ${parts} partes; o máximo é ${STORY_MAX_PARTS} (${formatSeconds(STORY_MAX_PARTS * STORY_SEGMENT_TARGET_SECONDS)}). Corte o vídeo ou publique como Reel.` });
+          }
+        } else {
+          issues.push({ platform: p, message: `${label} aceita vídeo de até ${formatSeconds(rule.maxSeconds)} (atual ${formatSeconds(dur)}). Corte o vídeo ou publique como Feed.` });
+        }
       }
-      if (rule.maxBytes && video.bytes && video.bytes > rule.maxBytes) {
+      // Partes cortadas ficam bem abaixo do limite de tamanho; só vale para o vídeo inteiro.
+      if (rule.maxBytes && video.bytes && video.bytes > rule.maxBytes && !(rule.split && dur > rule.maxSeconds)) {
         issues.push({ platform: p, message: `${label} aceita vídeo de até ${Math.round(rule.maxBytes / 1024 / 1024)}MB (atual ${Math.round(video.bytes / 1024 / 1024)}MB).` });
       }
     }

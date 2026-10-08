@@ -6,6 +6,7 @@ import type { ExternalPostSummary } from "@fsp/connectors";
 import type { ImportAccount, ImportRepository } from "./imports.js";
 import type { MetricsRepository, MetricsTarget } from "./metrics.js";
 import type { ReconcileRepository } from "./reconcile.js";
+import type { SegmentRef, SegmentRepository, SourceMedia } from "./segments.js";
 
 /** Implementação Prisma do repositório usado pelo processador. */
 export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
@@ -28,7 +29,7 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
         post: {
           caption: t.post.caption,
           format: t.post.format as PostFormat,
-          media: t.post.media.map((m) => ({ url: m.media.publicUrl, kind: m.media.kind as MediaKind })),
+          media: t.post.media.map((m) => ({ id: m.media.id, url: m.media.publicUrl, kind: m.media.kind as MediaKind, durationSec: m.media.durationSec })),
         },
         account: {
           id: t.account.id,
@@ -183,6 +184,58 @@ export function prismaReconcileRepository(prisma: PrismaClient): ReconcileReposi
     },
     async resetToScheduled(id, note) {
       await prisma.postTarget.update({ where: { id }, data: { status: "SCHEDULED", lastError: note } });
+    },
+  };
+}
+
+/** Partes de vídeo para Stories: filhas do MediaAsset original (parentId/segmentIndex). */
+export function prismaSegmentRepository(prisma: PrismaClient): SegmentRepository {
+  const toRef = (m: { id: string; publicUrl: string; segmentIndex: number | null; durationSec: number | null }): SegmentRef => ({
+    id: m.id,
+    url: m.publicUrl,
+    index: m.segmentIndex ?? 0,
+    durationSec: m.durationSec ?? 0,
+  });
+  return {
+    async loadMedia(id): Promise<SourceMedia | null> {
+      const m = await prisma.mediaAsset.findUnique({ where: { id } });
+      if (!m) return null;
+      return { id: m.id, organizationId: m.organizationId, kind: m.kind, storageKey: m.storageKey, publicUrl: m.publicUrl, width: m.width, height: m.height, durationSec: m.durationSec };
+    },
+    async listSegments(parentId) {
+      const rows = await prisma.mediaAsset.findMany({ where: { parentId }, orderBy: { segmentIndex: "asc" } });
+      return rows.map(toRef);
+    },
+    async claimSplit(id, now, staleMs) {
+      const r = await prisma.mediaAsset.updateMany({
+        where: { id, OR: [{ splitStartedAt: null }, { splitStartedAt: { lt: new Date(now.getTime() - staleMs) } }] },
+        data: { splitStartedAt: now },
+      });
+      return r.count === 1;
+    },
+    async releaseSplit(id) {
+      await prisma.mediaAsset.updateMany({ where: { id }, data: { splitStartedAt: null } });
+    },
+    async deleteSegments(parentId) {
+      await prisma.mediaAsset.deleteMany({ where: { parentId } });
+    },
+    async createSegment(parent, seg) {
+      const m = await prisma.mediaAsset.create({
+        data: {
+          organizationId: parent.organizationId,
+          kind: "VIDEO",
+          storageKey: seg.storageKey,
+          publicUrl: seg.publicUrl,
+          mimeType: "video/mp4",
+          width: parent.width,
+          height: parent.height,
+          bytes: seg.bytes,
+          durationSec: Math.round(seg.durationSec),
+          parentId: parent.id,
+          segmentIndex: seg.index,
+        },
+      });
+      return toRef(m);
     },
   };
 }

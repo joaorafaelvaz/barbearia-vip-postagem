@@ -16,7 +16,7 @@ export interface Storage {
 }
 
 /** Armazenamento local em `public/uploads` para desenvolvimento (sem S3 configurado). */
-export function localStorage(root = path.join(process.cwd(), "public", "uploads")): Storage {
+export function localStorage(root = optionalEnv("UPLOADS_DIR") ?? path.join(process.cwd(), "public", "uploads")): Storage {
   return {
     async put(key, body) {
       const file = path.join(root, key);

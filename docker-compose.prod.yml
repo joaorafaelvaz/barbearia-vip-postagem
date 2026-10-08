@@ -59,6 +59,10 @@ services:
     env_file: .env.production
     environment:
       NODE_ENV: production
+      # mesma pasta do web: as partes cortadas para Stories ficam públicas em /uploads/
+      UPLOADS_DIR: /app/apps/web/public/uploads
+    volumes:
+      - ./data/uploads:/app/apps/web/public/uploads
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

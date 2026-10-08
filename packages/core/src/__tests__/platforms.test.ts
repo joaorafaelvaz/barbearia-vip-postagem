@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateCaption, validateFormat } from "../platforms.js";
+import { planStorySegments, validateCaption, validateFormat } from "../platforms.js";
 import { validateImage, validateMediaSet, validateVideo } from "../media.js";
 
 describe("validateCaption", () => {
@@ -100,11 +100,19 @@ describe("validateFormat", () => {
     expect(validateFormat("STORY", ["INSTAGRAM"], ["IMAGE", "IMAGE"]).length).toBe(1);
     expect(validateFormat("STORY", ["GOOGLE_BUSINESS_PROFILE"], ["IMAGE"])[0]?.message).toMatch(/não aceita Story/);
   });
-  it("Story: vídeo acima de 60s é rejeitado no Instagram e no Facebook", () => {
-    const issues = validateFormat("STORY", ["INSTAGRAM", "FACEBOOK_PAGE"], [{ kind: "VIDEO", durationSec: 105, bytes: 18e6 }]);
-    expect(issues.length).toBe(2);
-    expect(issues[0]?.message).toContain("até 60s (atual 105s)");
+  it("Story: vídeo acima de 60s é aceito (será cortado) até 10 partes", () => {
+    expect(validateFormat("STORY", ["INSTAGRAM", "FACEBOOK_PAGE"], [{ kind: "VIDEO", durationSec: 105, bytes: 18e6 }])).toEqual([]);
     expect(validateFormat("STORY", ["INSTAGRAM"], [{ kind: "VIDEO", durationSec: 45 }])).toEqual([]);
+    const tooLong = validateFormat("STORY", ["INSTAGRAM"], [{ kind: "VIDEO", durationSec: 700 }]);
+    expect(tooLong[0]?.message).toMatch(/12 partes; o máximo é 10/);
+  });
+  it("planStorySegments: partes iguais de até 59s", () => {
+    expect(planStorySegments(45)).toEqual([{ index: 0, startSec: 0, lengthSec: 45 }]);
+    const two = planStorySegments(105);
+    expect(two).toEqual([{ index: 0, startSec: 0, lengthSec: 52.5 }, { index: 1, startSec: 52.5, lengthSec: 52.5 }]);
+    const three = planStorySegments(150);
+    expect(three.length).toBe(3);
+    expect(three.every((s) => s.lengthSec <= 59 && s.lengthSec >= 3)).toBe(true);
   });
   it("Story: vídeo acima de 100MB é rejeitado só no Instagram", () => {
     const issues = validateFormat("STORY", ["INSTAGRAM", "FACEBOOK_PAGE"], [{ kind: "VIDEO", durationSec: 30, bytes: 150 * 1024 * 1024 }]);

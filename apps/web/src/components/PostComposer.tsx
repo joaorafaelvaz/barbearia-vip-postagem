@@ -1,7 +1,7 @@
 "use client";
 
 import { validateMediaSet, type MediaKind } from "@fsp/core/media";
-import { validateFormat, type PostFormat } from "@fsp/core/platforms";
+import { STORY_MAX_VIDEO_SECONDS, formatSeconds, planStorySegments, validateFormat, type PostFormat } from "@fsp/core/platforms";
 import { CAPTION_LIMITS, PLATFORM_LABELS, type Platform } from "@fsp/core/platforms";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -42,6 +42,10 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
   const setIssues = [...(format === "FEED" ? validateMediaSet(kinds, selectedPlatforms) : []), ...validateFormat(format, selectedPlatforms, media.map((m) => ({ kind: m.kind, durationSec: m.durationSec, bytes: m.bytes })))];
   const warnings = [...new Set([...setIssues, ...mediaIssues].map((i) => i.message))];
   const needsMedia = (selectedPlatforms.includes("INSTAGRAM") || format !== "FEED") && media.length === 0;
+  const longStoryVideo = format === "STORY" ? media.find((m) => m.kind === "VIDEO" && (m.durationSec ?? 0) > STORY_MAX_VIDEO_SECONDS) : undefined;
+  const splitNote = longStoryVideo && setIssues.length === 0
+    ? (() => { const plan = planStorySegments(longStoryVideo.durationSec ?? 0); return `O vídeo tem ${formatSeconds(longStoryVideo.durationSec ?? 0)} e será dividido automaticamente em ${plan.length} Stories de ${formatSeconds(plan[0]?.lengthSec ?? 0)}, publicados em sequência.`; })()
+    : null;
   const whenInPast = when !== "" && new Date(when).getTime() < Date.now();
   const whenError = whenTouched && (when === "" ? "Escolha a data e a hora." : whenInPast ? "Esse horário já passou." : null);
 
@@ -100,6 +104,11 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
             onRemove={(id) => setMedia((list) => list.filter((x) => x.id !== id))}
             onError={setError}
           />
+          {splitNote && (
+            <div className="alert info" role="status">
+              <IconAlert size="sm" /><span>{splitNote}</span>
+            </div>
+          )}
           {warnings.length > 0 && (
             <div className={`alert ${setIssues.length > 0 ? "error" : "warn"}`} role="status">
               <IconAlert size="sm" /><span>{warnings.join(" ")}</span>

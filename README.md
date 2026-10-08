@@ -105,6 +105,17 @@ não suportam); no Facebook usa `photo_stories`/`video_stories`, no Instagram `m
 **Reel** exige um vídeo; no Facebook usa `video_reels` (upload em fases por URL), no Instagram
 `media_type=REELS`. Story e Reel só em Facebook e Instagram.
 
+### Corte automático para Stories
+
+Stories aceitam vídeo de até 60s (Instagram e Facebook). Ao agendar um Story com vídeo mais
+longo, o worker corta o arquivo com **ffmpeg** em partes iguais de até 59s (máximo de 10
+partes) e publica uma atrás da outra, na ordem. O corte roda assim que a postagem é
+agendada (job `prepare-media`) e as partes ficam gravadas como `MediaAsset` filhos do
+vídeo original, então 30 unidades reaproveitam o mesmo corte. Se uma parte falhar depois
+de outras já publicadas, o alvo fica FAILED sem retentativa automática, para não duplicar.
+Requisitos: `ffmpeg` na imagem do worker (já incluído) e o volume de uploads montado no
+worker (`UPLOADS_DIR`), ou S3 configurado.
+
 ### Mídia
 
 Imagens: JPG, PNG, GIF (o Instagram só aceita JPG). Vídeo: MP4 ou MOV, um por postagem, sem

@@ -125,12 +125,20 @@ model MediaAsset {
   bytes          Int
   /// duração em segundos (vídeo); null para imagem
   durationSec    Int?
+  /// vídeo de origem quando este asset é uma parte cortada para Stories
+  parentId       String?
+  segmentIndex   Int?
+  /// trava do corte automático: worker que está gerando as partes
+  splitStartedAt DateTime?
   createdAt      DateTime  @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   posts        PostMedia[]
+  parent       MediaAsset?  @relation("MediaSegments", fields: [parentId], references: [id], onDelete: Cascade)
+  segments     MediaAsset[] @relation("MediaSegments")
 
   @@index([organizationId])
+  @@index([parentId])
 }
 
 enum PostFormat {

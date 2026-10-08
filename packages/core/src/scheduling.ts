@@ -64,3 +64,12 @@ export const RECONCILE_EVERY_MS = 5 * 60_000;
 export const STALE_PUBLISHING_MS = 15 * 60_000;
 /** SCHEDULED vencido há mais que isso sem job na fila é reenfileirado. */
 export const OVERDUE_GRACE_MS = 2 * 60_000;
+
+/**
+ * Preparação de mídia: corte de vídeo longo em partes para Stories. Disparado ao agendar
+ * (para já estar pronto na hora) e sob demanda na publicação, se ainda não existir.
+ */
+export const PREPARE_MEDIA_JOB_NAME = "prepare-media";
+export interface PrepareMediaJobData {
+  mediaId: string;
+}

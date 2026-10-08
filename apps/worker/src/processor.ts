@@ -1,12 +1,17 @@
-import type { MediaRef, Publisher, PublishInput } from "@fsp/connectors";
+import type { MediaRef, Publisher, PublishInput, PublishResult } from "@fsp/connectors";
 import {
   MAX_ATTEMPTS,
+  PublishError,
   backoffMs,
   toPublishError,
   type Platform,
   type PostFormat,
   type TokenCipher,
 } from "@fsp/core";
+import { needsStorySplit, type SegmentRef } from "./segments.js";
+
+/** Mídia do post com o que o corte para Stories precisa saber. */
+export type TargetMedia = MediaRef & { id?: string; durationSec?: number | null };
 
 /** Visão do PostTarget que o processador precisa (carregada pelo repositório). */
 export interface TargetRecord {
@@ -15,7 +20,7 @@ export interface TargetRecord {
   status: string;
   attempts: number;
   scheduledAt: Date;
-  post: { caption: string; media: MediaRef[]; format?: PostFormat };
+  post: { caption: string; media: TargetMedia[]; format?: PostFormat };
   account: {
     id: string;
     organizationId: string;
@@ -48,6 +53,8 @@ export interface ProcessorDeps {
   cipher: Pick<TokenCipher, "encrypt" | "decrypt">;
   publisherFor(platform: Platform): Publisher;
   google: GoogleTokenRefresher;
+  /** Corte de vídeo longo para Stories (ausente em testes: publica a mídia original). */
+  segments?: { ensure(mediaId: string): Promise<SegmentRef[]> };
   now?: () => Date;
   log?: (msg: string, meta?: Record<string, unknown>) => void;
 }
@@ -90,9 +97,11 @@ export async function processTarget(deps: ProcessorDeps, postTargetId: string): 
       caption: target.post.caption,
       media: target.post.media,
     };
-    const result = await deps.publisherFor(target.account.platform).publish(input);
+    const publisher = deps.publisherFor(target.account.platform);
+    const parts = await storyParts(deps, target);
+    const result = parts ? await publishInParts(publisher, input, parts) : await publisher.publish(input);
     await deps.repo.markPublished(target.id, result);
-    log("published", { postTargetId: target.id, platform: target.account.platform });
+    log("published", { postTargetId: target.id, platform: target.account.platform, ...(parts ? { parts: parts.length } : {}) });
     return { outcome: "published", externalPostId: result.externalPostId };
   } catch (err) {
     const perr = toPublishError(err);
@@ -122,4 +131,32 @@ export async function resolveAccessToken(deps: Pick<ProcessorDeps, "cipher" | "g
   const refreshed = await deps.google.refresh(deps.cipher.decrypt(account.refreshTokenEnc));
   await deps.repo.updateAccountToken(account.id, deps.cipher.encrypt(refreshed.accessToken), refreshed.expiresAt);
   return refreshed.accessToken;
+}
+
+/** Partes cortadas quando é Story com vídeo acima do limite; null quando publica a mídia original. */
+async function storyParts(deps: ProcessorDeps, target: TargetRecord): Promise<SegmentRef[] | null> {
+  if ((target.post.format ?? "FEED") !== "STORY" || !deps.segments) return null;
+  const video = target.post.media.find((m) => m.kind === "VIDEO");
+  if (!video?.id || !needsStorySplit({ kind: video.kind, durationSec: video.durationSec })) return null;
+  const parts = await deps.segments.ensure(video.id);
+  return parts.length > 1 ? parts : null;
+}
+
+/**
+ * Publica cada parte como um Story, em ordem. Se uma parte falhar depois de outras
+ * já publicadas, o erro vira definitivo (re-tentar duplicaria as partes anteriores).
+ */
+async function publishInParts(publisher: Publisher, input: PublishInput, parts: SegmentRef[]): Promise<PublishResult> {
+  const ids: string[] = [];
+  for (const [i, part] of parts.entries()) {
+    try {
+      const r = await publisher.publish({ ...input, media: [{ url: part.url, kind: "VIDEO" }] });
+      ids.push(r.externalPostId);
+    } catch (err) {
+      if (ids.length === 0) throw err;
+      const perr = toPublishError(err);
+      throw new PublishError("VALIDATION", `Parte ${i + 1} de ${parts.length} falhou após ${ids.length} publicada(s); não re-tente para não duplicar. Motivo: ${perr.message}`, { cause: err });
+    }
+  }
+  return { externalPostId: ids[0] ?? "" };
 }

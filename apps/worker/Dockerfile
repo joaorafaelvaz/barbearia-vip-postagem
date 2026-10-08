@@ -1,6 +1,7 @@
 # Imagem do worker (BullMQ) e das migrations. Contexto de build: raiz do monorepo.
 FROM node:22-alpine AS base
-RUN apk add --no-cache libc6-compat openssl && corepack enable && corepack prepare pnpm@11.3.0 --activate
+# ffmpeg: corte automático de vídeos longos para Stories
+RUN apk add --no-cache libc6-compat openssl ffmpeg && corepack enable && corepack prepare pnpm@11.3.0 --activate
 WORKDIR /app
 
 FROM base AS build

@@ -1,5 +1,5 @@
 import { PublishError, TokenCipher, generateEncryptionKey } from "@fsp/core";
-import type { Publisher } from "@fsp/connectors";
+import type { Publisher, PublishInput } from "@fsp/connectors";
 import { describe, expect, it } from "vitest";
 import { processTarget, type ProcessorDeps, type TargetRecord, type TargetRepository } from "../processor.js";
 
@@ -155,5 +155,40 @@ describe("processTarget", () => {
     const tokenCall = calls.find((c) => c.op === "token");
     expect(tokenCall).toBeDefined();
     expect(cipher.decrypt(tokenCall!.args[1] as string)).toBe("NEW");
+  });
+});
+
+describe("Story com vídeo longo (corte automático)", () => {
+  const longStory = (): TargetRecord => makeTarget({
+    post: { caption: "", format: "STORY", media: [{ id: "m1", url: "https://cdn/long.mp4", kind: "VIDEO", durationSec: 105 }] },
+  });
+  const parts = [{ id: "s0", url: "https://cdn/p1.mp4", index: 0, durationSec: 52.5 }, { id: "s1", url: "https://cdn/p2.mp4", index: 1, durationSec: 52.5 }];
+
+  it("publica uma parte por vez, em ordem, e guarda o id da primeira", async () => {
+    const { repo } = fakeRepo(longStory());
+    const seen: PublishInput[] = [];
+    let n = 0;
+    const publisher: Publisher = { platform: "INSTAGRAM", async publish(input) { seen.push(input); return { externalPostId: `ext${++n}` }; } };
+    const d = { ...deps(repo, publisher), segments: { ensure: async () => parts } };
+    const out = await processTarget(d, "t1");
+    expect(out).toEqual({ outcome: "published", externalPostId: "ext1" });
+    expect(seen.map((s) => s.media[0]?.url)).toEqual(["https://cdn/p1.mp4", "https://cdn/p2.mp4"]);
+    expect(seen.every((s) => s.format === "STORY")).toBe(true);
+  });
+  it("falha na segunda parte vira erro definitivo (sem re-tentar)", async () => {
+    const { repo } = fakeRepo(longStory());
+    let n = 0;
+    const publisher: Publisher = { platform: "INSTAGRAM", async publish() { if (++n === 2) throw new PublishError("RATE_LIMITED", "limite"); return { externalPostId: "ext1" }; } };
+    const d = { ...deps(repo, publisher), segments: { ensure: async () => parts } };
+    const out = await processTarget(d, "t1");
+    expect(out.outcome).toBe("failed");
+    expect((out as { error: string }).error).toMatch(/Parte 2 de 2 falhou após 1 publicada/);
+  });
+  it("sem segments nas deps publica a mídia original", async () => {
+    const { repo } = fakeRepo(longStory());
+    const seen: PublishInput[] = [];
+    const publisher: Publisher = { platform: "INSTAGRAM", async publish(input) { seen.push(input); return { externalPostId: "x" }; } };
+    await processTarget(deps(repo, publisher), "t1");
+    expect(seen[0]?.media[0]?.url).toBe("https://cdn/long.mp4");
   });
 });

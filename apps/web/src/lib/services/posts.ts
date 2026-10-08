@@ -1,5 +1,5 @@
-import { localToUtc, validateCaption, validateFormat, validateMediaSet, type FormatMedia, type MediaKind, type Platform, type PostFormat } from "@fsp/core";
-import { enqueuePublish, requeuePublish, dequeuePublish, type PublishQueueLike } from "@fsp/queue";
+import { STORY_MAX_VIDEO_SECONDS, localToUtc, validateCaption, validateFormat, validateMediaSet, type FormatMedia, type MediaKind, type Platform, type PostFormat } from "@fsp/core";
+import { enqueuePrepareMedia, enqueuePublish, requeuePublish, dequeuePublish, type PublishQueueLike } from "@fsp/queue";
 import type { PrismaClient } from "@fsp/db";
 import { z } from "zod";
 import { HttpError } from "../api";
@@ -103,6 +103,14 @@ export async function createPost(
 
   // Enfileira fora da transação: se falhar, o painel mostra SCHEDULED e "re-tentar" recupera.
   await Promise.all(post.targets.map((t) => enqueuePublish(deps.queue, t.id, t.scheduledAt)));
+  // Story com vídeo acima de 60s: o worker corta em partes já agora, para estar pronto no horário.
+  if (input.format === "STORY") {
+    for (const [i, m] of mediaInfo.entries()) {
+      if (m.kind === "VIDEO" && (m.durationSec ?? 0) > STORY_MAX_VIDEO_SECONDS) {
+        await enqueuePrepareMedia(deps.queue, input.mediaIds[i] as string);
+      }
+    }
+  }
   return post;
 }
 
