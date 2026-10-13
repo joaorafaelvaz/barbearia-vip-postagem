@@ -8,6 +8,7 @@ export * from "./types.js";
 export * from "./facebook.js";
 export * from "./facebook-stories.js";
 export * from "./instagram.js";
+export * from "./instagram-profile.js";
 export * from "./google-business.js";
 export * from "./oauth/meta.js";
 export * from "./oauth/google.js";

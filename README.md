@@ -78,6 +78,8 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
    | `instagram_basic` | Identificar a conta Instagram Business e listar as mídias publicadas |
    | `instagram_content_publish` | Publicar Feed, carrossel, Stories e Reels no Instagram |
    | `instagram_manage_insights` | Coletar métricas do Instagram (alcance, visualizações, salvamentos, compartilhamentos) |
+   | `instagram_manage_comments` | Menu Perfis: ler, responder, ocultar e excluir comentários no Instagram |
+   | `pages_manage_engagement` | Comentários da Página e capa personalizada de Reels no Facebook |
    | `business_management` | Acessar Páginas e contas Instagram ligadas ao Gerenciador de Negócios |
 
    Enquanto o app está em modo de desenvolvimento, só usuários com papel no app
@@ -236,6 +238,16 @@ Publicações feitas fora do sistema nos últimos 90 dias são importadas de cad
 `ExternalPost`, marcadas como "importada" no Analytics. A importação roda ao conectar uma conta,
 uma vez por dia no worker e pelo botão "Importar publicações". O engajamento das importadas é
 atualizado pela mesma coleta de métricas.
+
+## Perfis (gestão de perfil)
+
+O menu **Perfis** lista as contas conectadas de cada unidade. Para o Instagram, a página da
+conta mostra o perfil (foto, seguidores, bio), a grade de publicações lida ao vivo da API e,
+por publicação: abrir no Instagram, comentários (responder, ocultar/mostrar, excluir) e
+excluir a publicação. Excluir uma mídia publicada pelo sistema marca o alvo como CANCELLED
+com a nota `[DELETED]` e remove a cópia importada do analytics. Exige
+`instagram_manage_comments` (contas conectadas antes precisam reconectar). Facebook e
+Google aparecem como "em breve".
 
 ## Usuários e permissões
 
