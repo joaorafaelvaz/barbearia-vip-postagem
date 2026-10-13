@@ -94,6 +94,8 @@ model ConnectedAccount {
   tokenExpiresAt DateTime?
   /// Para Instagram: id da Page vinculada (necessário para renovar token)
   parentExternalId String?
+  /// Meta: token de usuário de longa duração (60 dias), exigido por operações como excluir mídia do Instagram
+  userTokenEnc   String?
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

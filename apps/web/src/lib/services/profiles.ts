@@ -15,7 +15,14 @@ export async function loadInstagramAccount(prisma: PrismaClient, s: SessionUser,
   if (account.platform !== "INSTAGRAM") throw new HttpError(400, "Gestão de perfil disponível só para Instagram por enquanto.");
   await assertUnitAllowed(prisma, s, account.unitId);
   if (!account.isActive) throw new HttpError(409, "Conta desconectada. Reconecte em Unidades e contas.");
-  return { account, token: getCipher().decrypt(account.accessTokenEnc), client: new InstagramProfileClient() };
+  const cipher = getCipher();
+  return {
+    account,
+    token: cipher.decrypt(account.accessTokenEnc),
+    /** Token de usuário Meta; ausente em contas conectadas antes desta versão. */
+    userToken: account.userTokenEnc ? cipher.decrypt(account.userTokenEnc) : null,
+    client: new InstagramProfileClient(),
+  };
 }
 
 /**

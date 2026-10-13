@@ -24,7 +24,7 @@ export const POST = route(async (req: Request) => {
   const userToken = getCipher().decrypt(pending);
   const pages = (await listMetaPages(userToken)).filter((p) => input.pageIds.includes(p.id));
   if (pages.length === 0) throw new HttpError(400, "Nenhuma Page válida selecionada.");
-  await connectMetaPages({ prisma, cipher: getCipher() }, s.organizationId, input.unitId, pages);
+  await connectMetaPages({ prisma, cipher: getCipher() }, s.organizationId, input.unitId, pages, userToken);
   await enqueueImportNow(getQueue(), { organizationId: s.organizationId }).catch(() => undefined); // importa o histórico das contas novas
   const res = NextResponse.json({ connected: pages.length });
   res.cookies.set(META_PENDING_COOKIE, "", { path: "/", maxAge: 0 });

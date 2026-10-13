@@ -79,6 +79,7 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
    | `instagram_content_publish` | Publicar Feed, carrossel, Stories e Reels no Instagram |
    | `instagram_manage_insights` | Coletar métricas do Instagram (alcance, visualizações, salvamentos, compartilhamentos) |
    | `instagram_manage_comments` | Menu Perfis: ler, responder, ocultar e excluir comentários no Instagram |
+   | `instagram_manage_contents` | Menu Perfis: excluir publicações do Instagram (usa o token de usuário guardado na conexão) |
    | `pages_manage_engagement` | Comentários da Página e capa personalizada de Reels no Facebook |
    | `business_management` | Acessar Páginas e contas Instagram ligadas ao Gerenciador de Negócios |
 

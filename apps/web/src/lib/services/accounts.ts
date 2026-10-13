@@ -18,14 +18,16 @@ async function assertUnit(prisma: PrismaClient, organizationId: string, unitId: 
  * Vincula Pages (e seus Instagram Business Accounts) a uma unidade.
  * Page tokens derivados de user token de longa duração não expiram.
  */
-export async function connectMetaPages(deps: Deps, organizationId: string, unitId: string, pages: MetaPage[]) {
+export async function connectMetaPages(deps: Deps, organizationId: string, unitId: string, pages: MetaPage[], userToken?: string) {
   await assertUnit(deps.prisma, organizationId, unitId);
+  // Token de usuário (60 dias): a API exige em algumas operações, como excluir mídia do Instagram.
+  const userTokenEnc = userToken ? deps.cipher.encrypt(userToken) : null;
   for (const page of pages) {
     const tokenEnc = deps.cipher.encrypt(page.accessToken);
     await deps.prisma.connectedAccount.upsert({
       where: { organizationId_platform_externalId: { organizationId, platform: "FACEBOOK_PAGE", externalId: page.id } },
-      create: { organizationId, unitId, platform: "FACEBOOK_PAGE", externalId: page.id, displayName: page.name, accessTokenEnc: tokenEnc },
-      update: { unitId, displayName: page.name, accessTokenEnc: tokenEnc, isActive: true },
+      create: { organizationId, unitId, platform: "FACEBOOK_PAGE", externalId: page.id, displayName: page.name, accessTokenEnc: tokenEnc, userTokenEnc },
+      update: { unitId, displayName: page.name, accessTokenEnc: tokenEnc, userTokenEnc, isActive: true },
     });
     const ig = page.instagramBusinessAccount;
     if (ig) {
@@ -39,9 +41,10 @@ export async function connectMetaPages(deps: Deps, organizationId: string, unitI
           externalId: ig.id,
           displayName: name,
           accessTokenEnc: tokenEnc,
+          userTokenEnc,
           parentExternalId: page.id,
         },
-        update: { unitId, displayName: name, accessTokenEnc: tokenEnc, parentExternalId: page.id, isActive: true },
+        update: { unitId, displayName: name, accessTokenEnc: tokenEnc, userTokenEnc, parentExternalId: page.id, isActive: true },
       });
     }
   }
