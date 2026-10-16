@@ -1,4 +1,4 @@
-import { POST_FORMAT_LABELS, type PostFormat } from "@fsp/core";
+import { POST_FORMAT_LABELS, utcToLocal, type PostFormat } from "@fsp/core";
 import Link from "next/link";
 import { PlatformBadge, StatusBadge } from "@/components/Badges";
 import { BulkActions } from "@/components/BulkActions";
@@ -11,31 +11,47 @@ import { prisma } from "@/lib/db";
 import { STATUS_LABELS, formatInTz, shorten } from "@/lib/format";
 import { requireSession } from "@/lib/session";
 
-interface Search { mes?: string; unidade?: string; plataforma?: string; status?: string; ok?: string }
+interface Search { mes?: string; unidade?: string; plataforma?: string; status?: string; de?: string; ate?: string; ordem?: string; ok?: string }
 const DAY_MS = 86_400_000;
+const isDay = (v: string | undefined): v is string => Boolean(v && /^\d{4}-\d{2}-\d{2}$/.test(v));
+const fmtDay = (d: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<Search> }) {
   const s = await requireSession();
   const sp = await searchParams;
-  const range = monthRange(sp.mes);
+  // Intervalo de datas (dia local de cada unidade). Quando informado, a lista ignora o mês e o calendário acompanha "de".
+  const de = isDay(sp.de) ? sp.de : undefined;
+  const ate = isDay(sp.ate) ? sp.ate : undefined;
+  const byDate = Boolean(de || ate);
+  const range = monthRange(sp.mes ?? de?.slice(0, 7));
+  const newestFirst = sp.ordem !== "antigas";
+  const windowStart = byDate ? (de ? new Date(`${de}T00:00:00Z`) : new Date(0)) : range.start;
+  const windowEnd = byDate ? (ate ? new Date(new Date(`${ate}T00:00:00Z`).getTime() + DAY_MS) : new Date(Date.UTC(2100, 0, 1))) : range.end;
   const allowed = await allowedUnitIds(prisma, s);
   const accountFilter = {
     ...(sp.unidade ? { unitId: sp.unidade } : allowed ? { unitId: { in: allowed } } : {}),
     ...(sp.plataforma ? { platform: sp.plataforma as never } : {}),
   };
-  const [units, targets] = await Promise.all([
+  const [units, allTargets] = await Promise.all([
     prisma.unit.findMany({ where: { organizationId: s.organizationId, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { name: "asc" } }),
     prisma.postTarget.findMany({
       where: {
         organizationId: s.organizationId,
-        scheduledAt: { gte: new Date(range.start.getTime() - DAY_MS), lt: new Date(range.end.getTime() + DAY_MS) },
+        scheduledAt: { gte: new Date(windowStart.getTime() - DAY_MS), lt: new Date(windowEnd.getTime() + DAY_MS) },
         ...(Object.keys(accountFilter).length ? { account: accountFilter } : {}),
         ...(sp.status ? { status: sp.status as never } : {}),
       },
-      orderBy: { scheduledAt: "asc" },
+      orderBy: { scheduledAt: newestFirst ? "desc" : "asc" },
       include: { post: true, account: { include: { unit: true } } },
     }),
   ]);
+  // Corte exato pelo dia local da unidade (a consulta usa uma folga de 1 dia em UTC).
+  const targets = byDate
+    ? allTargets.filter((t) => {
+        const day = utcToLocal(t.scheduledAt, t.account.unit.timezone).slice(0, 10);
+        return (!de || day >= de) && (!ate || day <= ate);
+      })
+    : allTargets;
   const counts: Record<string, number> = {};
   for (const t of targets) counts[t.status] = (counts[t.status] ?? 0) + 1;
   const q = (over: Partial<Search>) => {
@@ -43,7 +59,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     for (const [k, v] of Object.entries({ ...sp, ok: undefined, ...over })) if (v) p.set(k, v);
     return `/?${p.toString()}`;
   };
-  const filtered = Boolean(sp.unidade || sp.plataforma || sp.status);
+  const filtered = Boolean(sp.unidade || sp.plataforma || sp.status || byDate || sp.ordem);
+  const periodLabel = byDate
+    ? de && ate ? `de ${fmtDay(de)} a ${fmtDay(ate)}` : de ? `a partir de ${fmtDay(de)}` : `até ${fmtDay(ate as string)}`
+    : `de ${range.label}`;
   const hasUnits = units.length > 0;
 
   return (
@@ -87,8 +106,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <option value="">Todos os status</option>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          <label className="visually-hidden" htmlFor="f-de">De</label>
+          <input id="f-de" type="date" name="de" defaultValue={de ?? ""} aria-label="Data inicial" title="Data inicial (dia local da unidade)" />
+          <label className="visually-hidden" htmlFor="f-ate">Até</label>
+          <input id="f-ate" type="date" name="ate" defaultValue={ate ?? ""} aria-label="Data final" title="Data final (dia local da unidade)" />
+          <label className="visually-hidden" htmlFor="f-ordem">Ordem</label>
+          <select id="f-ordem" name="ordem" defaultValue={sp.ordem ?? ""}>
+            <option value="">Mais recentes primeiro</option>
+            <option value="antigas">Mais antigas primeiro</option>
+          </select>
           <button className="btn small" type="submit">Filtrar</button>
-          {filtered && <Link className="btn small ghost" href={q({ unidade: "", plataforma: "", status: "" })}>Limpar</Link>}
+          {filtered && <Link className="btn small ghost" href={q({ unidade: "", plataforma: "", status: "", de: "", ate: "", ordem: "" })}>Limpar</Link>}
         </form>
       </div>
 
@@ -100,14 +128,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
       <section>
         <div className="row between">
-          <h2>Publicações do mês</h2>
-          <BulkActions compact scope={{ from: range.start.toISOString(), to: range.end.toISOString() }} retryable={(counts.FAILED ?? 0) + (counts.CANCELLED ?? 0)} cancellable={counts.SCHEDULED ?? 0} />
+          <h2>Publicações {periodLabel} <small className="muted" style={{ fontWeight: 400 }}>({targets.length})</small></h2>
+          <BulkActions compact scope={{ from: windowStart.toISOString(), to: windowEnd.toISOString() }} retryable={(counts.FAILED ?? 0) + (counts.CANCELLED ?? 0)} cancellable={counts.SCHEDULED ?? 0} />
         </div>
         <div className="card tight">
           {targets.length === 0 ? (
             <div className="empty">
               <IconCalendar />
-              <strong>{hasUnits ? "Nenhuma publicação neste período" : "Comece cadastrando suas unidades"}</strong>
+              <strong>{hasUnits ? (filtered ? "Nenhuma publicação com esses filtros" : "Nenhuma publicação neste período") : "Comece cadastrando suas unidades"}</strong>
               <span>{hasUnits ? "Agende uma postagem para vê-la aqui, com o status de cada conta." : "Depois conecte as contas de cada unidade e agende a primeira postagem."}</span>
               <Link className="btn primary" href={hasUnits ? "/novo" : "/unidades"}>{hasUnits ? "Nova postagem" : "Cadastrar unidades"}</Link>
             </div>

@@ -24,6 +24,7 @@ td.actions { text-align: right; white-space: nowrap; }
 .toolbar .month strong { min-width: 150px; text-align: center; text-transform: capitalize; font-size: var(--fs-lg); }
 .filters { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .filters select { width: auto; min-width: 180px; }
+.filters input[type="date"] { width: auto; min-width: 150px; }
 .legend { display: flex; gap: var(--space-3); flex-wrap: wrap; font-size: var(--fs-xs); color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
