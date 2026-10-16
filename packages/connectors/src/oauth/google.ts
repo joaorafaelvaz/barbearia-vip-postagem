@@ -27,12 +27,12 @@ export interface GoogleLocation {
   address?: string;
 }
 
-export function buildGoogleAuthorizeUrl(cfg: Pick<GoogleOAuthConfig, "clientId" | "redirectUri">, state: string): string {
+export function buildGoogleAuthorizeUrl(cfg: Pick<GoogleOAuthConfig, "clientId" | "redirectUri">, state: string, scopes: readonly string[] = GOOGLE_SCOPES): string {
   const params = new URLSearchParams({
     client_id: cfg.clientId,
     redirect_uri: cfg.redirectUri,
     response_type: "code",
-    scope: GOOGLE_SCOPES.join(" "),
+    scope: scopes.join(" "),
     access_type: "offline",
     prompt: "consent",
     state,

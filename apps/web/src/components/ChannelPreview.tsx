@@ -1,8 +1,8 @@
 "use client";
 
 import { FORMAT_SUPPORT, PLATFORM_LABELS, POST_FORMAT_LABELS, type Platform, type PostFormat } from "@fsp/core/platforms";
-import { FacebookFeed, GoogleCard, InstagramFeed, Vertical } from "./ChannelPreviewCards";
-import { IconFacebook, IconInstagram, IconMapPin } from "./Icons";
+import { FacebookFeed, GoogleCard, InstagramFeed, Vertical, YouTubeCard } from "./ChannelPreviewCards";
+import { IconFacebook, IconInstagram, IconMapPin, IconTikTok, IconYouTube } from "./Icons";
 import type { Uploaded } from "./MediaPicker";
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
   coverUrl?: string;
 }
 
-const FALLBACK_NAME: Record<Platform, string> = { INSTAGRAM: "@suaconta", FACEBOOK_PAGE: "Sua Página", GOOGLE_BUSINESS_PROFILE: "Sua unidade" };
+const FALLBACK_NAME: Record<Platform, string> = { INSTAGRAM: "@suaconta", FACEBOOK_PAGE: "Sua Página", GOOGLE_BUSINESS_PROFILE: "Sua unidade", TIKTOK: "@suaconta", YOUTUBE: "Seu canal" };
 
 /** Como a postagem deve aparecer em cada canal. É uma aproximação visual, não a renderização real. */
 export function ChannelPreview({ format, caption, media, platforms, names, coverUrl }: Props) {
@@ -27,13 +27,15 @@ export function ChannelPreview({ format, caption, media, platforms, names, cover
     <div className="preview-strip" aria-label="Pré-visualização por canal">
       {shown.map((p) => {
         const name = names[p] ?? FALLBACK_NAME[p];
-        const icon = p === "INSTAGRAM" ? <IconInstagram size="sm" /> : p === "FACEBOOK_PAGE" ? <IconFacebook size="sm" /> : <IconMapPin size="sm" />;
+        const icon = p === "INSTAGRAM" ? <IconInstagram size="sm" /> : p === "FACEBOOK_PAGE" ? <IconFacebook size="sm" /> : p === "TIKTOK" ? <IconTikTok size="sm" /> : p === "YOUTUBE" ? <IconYouTube size="sm" /> : <IconMapPin size="sm" />;
         return (
           <figure key={p} className="preview-item">
             <figcaption className="row" style={{ gap: 6 }}>{icon}<span>{PLATFORM_LABELS[p]} · {POST_FORMAT_LABELS[format]}</span></figcaption>
             {format === "FEED" && p === "INSTAGRAM" && <InstagramFeed name={name} caption={caption} media={media} />}
             {format === "FEED" && p === "FACEBOOK_PAGE" && <FacebookFeed name={name} caption={caption} media={media} />}
             {format === "FEED" && p === "GOOGLE_BUSINESS_PROFILE" && <GoogleCard name={name} caption={caption} media={media} />}
+            {format === "FEED" && p === "TIKTOK" && <Vertical kind="REEL" platform={p} name={name} caption={caption} media={media} coverUrl={coverUrl} />}
+            {format === "FEED" && p === "YOUTUBE" && <YouTubeCard name={name} caption={caption} media={media} coverUrl={coverUrl} />}
             {format !== "FEED" && <Vertical kind={format} platform={p} name={name} caption={caption} media={media} coverUrl={coverUrl} />}
           </figure>
         );

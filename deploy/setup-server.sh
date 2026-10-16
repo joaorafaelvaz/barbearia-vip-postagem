@@ -104,4 +104,7 @@ bash deploy/deploy.sh
 echo
 echo "Pronto: https://$DOMAIN  (web interno em 127.0.0.1:$PORT)"
 echo "Próximos passos: preencher META_APP_ID/META_APP_SECRET e GOOGLE_CLIENT_ID/SECRET em $APP_DIR/.env.production e rodar: bash deploy/deploy.sh"
-echo "Callbacks OAuth a cadastrar: https://$DOMAIN/api/oauth/meta/callback e https://$DOMAIN/api/oauth/google/callback"
+echo "Callbacks OAuth a cadastrar:"
+echo "  Meta:    https://$DOMAIN/api/oauth/meta/callback"
+echo "  Google:  https://$DOMAIN/api/oauth/google/callback  e  https://$DOMAIN/api/oauth/youtube/callback"
+echo "  TikTok:  https://$DOMAIN/api/oauth/tiktok/callback  (e verifique o domínio $DOMAIN para PULL_FROM_URL)"

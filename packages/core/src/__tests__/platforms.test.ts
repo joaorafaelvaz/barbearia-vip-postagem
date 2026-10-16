@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planStorySegments, validateCaption, validateFormat } from "../platforms.js";
+import { planStorySegments, validateCaption, validateFormat, youtubeTitleFromCaption } from "../platforms.js";
 import { validateImage, validateMediaSet, validateVideo } from "../media.js";
 
 describe("validateCaption", () => {
@@ -125,5 +125,22 @@ describe("validateFormat", () => {
   it("Reel: exatamente um vídeo", () => {
     expect(validateFormat("REEL", ["INSTAGRAM"], ["VIDEO"])).toEqual([]);
     expect(validateFormat("REEL", ["INSTAGRAM"], ["IMAGE"])[0]?.message).toMatch(/um vídeo/);
+  });
+});
+
+describe("TikTok e YouTube", () => {
+  it("exigem mídia e YouTube pede vídeo", () => {
+    const issues = validateCaption("oi", ["TIKTOK", "YOUTUBE"], false);
+    expect(issues.map((i) => i.message)).toEqual(["TikTok exige pelo menos uma imagem ou vídeo.", "YouTube exige um vídeo."]);
+  });
+  it("Reel: Short do YouTube até 3min, TikTok até 10min", () => {
+    expect(validateFormat("REEL", ["YOUTUBE"], [{ kind: "VIDEO", durationSec: 200 }])[0]?.message).toMatch(/YouTube aceita vídeo de até 3min/);
+    expect(validateFormat("REEL", ["TIKTOK"], [{ kind: "VIDEO", durationSec: 200 }])).toEqual([]);
+    expect(validateFormat("STORY", ["TIKTOK"], ["IMAGE"])[0]?.message).toMatch(/não aceita Story/);
+  });
+  it("título do YouTube vem da primeira linha, até 100 caracteres", () => {
+    expect(youtubeTitleFromCaption("\n  Promoção de sexta!  \nDetalhes...")).toBe("Promoção de sexta!");
+    expect(youtubeTitleFromCaption("")).toBe("Vídeo");
+    expect([...youtubeTitleFromCaption("a".repeat(150))].length).toBe(100);
   });
 });

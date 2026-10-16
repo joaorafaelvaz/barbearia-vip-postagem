@@ -2,7 +2,7 @@
 
 import { validateMediaSet, type MediaKind } from "@fsp/core/media";
 import { STORY_MAX_VIDEO_SECONDS, formatSeconds, planStorySegments, validateFormat, type PostFormat } from "@fsp/core/platforms";
-import { CAPTION_LIMITS, PLATFORM_LABELS, type Platform } from "@fsp/core/platforms";
+import { CAPTION_LIMITS, PLATFORM_LABELS, REQUIRES_MEDIA, type Platform } from "@fsp/core/platforms";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AccountSelector, type ComposerUnit } from "./AccountSelector";
@@ -50,7 +50,8 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
   const kinds = media.map((m) => m.kind as MediaKind);
   const setIssues = [...(format === "FEED" ? validateMediaSet(kinds, selectedPlatforms) : []), ...validateFormat(format, selectedPlatforms, media.map((m) => ({ kind: m.kind, durationSec: m.durationSec, bytes: m.bytes })))];
   const warnings = [...new Set([...setIssues, ...mediaIssues].map((i) => i.message))];
-  const needsMedia = (selectedPlatforms.includes("INSTAGRAM") || format !== "FEED") && media.length === 0;
+  const mediaRequiredBy = selectedPlatforms.filter((p) => REQUIRES_MEDIA[p]);
+  const needsMedia = (mediaRequiredBy.length > 0 || format !== "FEED") && media.length === 0;
   const longStoryVideo = format === "STORY" ? media.find((m) => m.kind === "VIDEO" && (m.durationSec ?? 0) > STORY_MAX_VIDEO_SECONDS) : undefined;
   const splitNote = longStoryVideo && setIssues.length === 0
     ? (() => { const plan = planStorySegments(longStoryVideo.durationSec ?? 0); return `O vídeo tem ${formatSeconds(longStoryVideo.durationSec ?? 0)} e será dividido automaticamente em ${plan.length} Stories de ${formatSeconds(plan[0]?.lengthSec ?? 0)}, publicados em sequência.`; })()
@@ -62,7 +63,7 @@ export function PostComposer({ units }: { units: ComposerUnit[] }) {
     selected.size === 0 ? "Selecione pelo menos uma conta."
     : !when ? "Escolha a data e a hora."
     : whenInPast ? "O horário escolhido já passou."
-    : needsMedia ? (format === "FEED" ? "O Instagram exige uma imagem ou vídeo." : `${format === "REEL" ? "Reel exige um vídeo" : "Story exige uma imagem ou um vídeo"}.`)
+    : needsMedia ? (format === "FEED" ? `${mediaRequiredBy.map((p) => PLATFORM_LABELS[p]).join(", ")} exige uma imagem ou vídeo.` : `${format === "REEL" ? "Reel exige um vídeo" : "Story exige uma imagem ou um vídeo"}.`)
     : setIssues.length > 0 ? "Ajuste as mídias ou as contas selecionadas."
     : overLimit.length > 0 ? `Texto acima do limite do ${overLimit.map((p) => PLATFORM_LABELS[p]).join(", ")}.`
     : caption.trim() === "" && media.length === 0 ? "Escreva um texto ou anexe uma mídia."

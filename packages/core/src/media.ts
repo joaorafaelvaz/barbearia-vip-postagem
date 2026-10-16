@@ -39,11 +39,18 @@ export const IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif"] as cons
 export const VIDEO_MIME_TYPES = ["video/mp4", "video/quicktime"] as const;
 
 /** Regras de imagem por plataforma (documentação oficial de cada API). */
-export const IMAGE_RULES: Record<Platform, ImageRule> = {
+export const IMAGE_RULES: Partial<Record<Platform, ImageRule>> = {
   INSTAGRAM: { mimeTypes: ["image/jpeg"], minWidth: 320, minHeight: 320, maxBytes: 8 * 1024 * 1024, aspectRange: [0.8, 1.91] },
   FACEBOOK_PAGE: { mimeTypes: ["image/jpeg", "image/png", "image/gif"], minWidth: 200, minHeight: 200, maxBytes: 10 * 1024 * 1024 },
   GOOGLE_BUSINESS_PROFILE: { mimeTypes: ["image/jpeg", "image/png"], minWidth: 250, minHeight: 250, maxBytes: 5 * 1024 * 1024 },
+  /** Post de fotos do TikTok (até 35 imagens JPEG/WebP). */
+  TIKTOK: { mimeTypes: ["image/jpeg"], minWidth: 360, minHeight: 360, maxBytes: 20 * 1024 * 1024 },
+  // YOUTUBE: não aceita imagens (só vídeo)
 };
+
+export function supportsImages(platform: Platform): boolean {
+  return IMAGE_RULES[platform] !== undefined;
+}
 
 /**
  * Regras de vídeo. Instagram publica como Reels (MP4/MOV, H.264 + AAC, 3s a 15min,
@@ -53,6 +60,10 @@ export const IMAGE_RULES: Record<Platform, ImageRule> = {
 export const VIDEO_RULES: Partial<Record<Platform, VideoRule>> = {
   INSTAGRAM: { mimeTypes: [...VIDEO_MIME_TYPES], maxBytes: 1024 * 1024 * 1024, minSeconds: 3, maxSeconds: 15 * 60, aspectRange: [0.01, 10] },
   FACEBOOK_PAGE: { mimeTypes: [...VIDEO_MIME_TYPES], maxBytes: 1024 * 1024 * 1024, minSeconds: 1, maxSeconds: 240 * 60 },
+  /** TikTok: MP4/MOV/WebM, 3s a 10min (o limite real vem de creator_info; 4GB). */
+  TIKTOK: { mimeTypes: [...VIDEO_MIME_TYPES], maxBytes: 4 * 1024 * 1024 * 1024, minSeconds: 3, maxSeconds: 10 * 60 },
+  /** YouTube: vídeos até 12h (contas verificadas); Shorts até 3min. */
+  YOUTUBE: { mimeTypes: [...VIDEO_MIME_TYPES], maxBytes: 256 * 1024 * 1024 * 1024, minSeconds: 1, maxSeconds: 12 * 60 * 60 },
 };
 
 export function supportsVideo(platform: Platform): boolean {
@@ -68,6 +79,10 @@ export function validateImage(info: MediaInfo, platforms: readonly Platform[]): 
   for (const platform of platforms) {
     const rule = IMAGE_RULES[platform];
     const label = PLATFORM_LABELS[platform];
+    if (!rule) {
+      issues.push({ platform, message: `${label} não aceita imagens: envie um vídeo ou desmarque essas contas.` });
+      continue;
+    }
     if (!rule.mimeTypes.includes(info.mimeType)) {
       issues.push({ platform, message: `${label} aceita apenas ${formatList(rule.mimeTypes)}.` });
     }
@@ -132,7 +147,14 @@ export function validateMediaSet(kinds: readonly MediaKind[], platforms: readonl
   const videos = kinds.filter((k) => k === "VIDEO").length;
   const images = kinds.length - videos;
   const issues: MediaIssue[] = [];
-  if (videos === 0) return issues;
+  if (videos === 0) {
+    if (images > 0) {
+      for (const platform of platforms) {
+        if (!supportsImages(platform)) issues.push({ platform, message: `${PLATFORM_LABELS[platform]} não aceita imagens: envie um vídeo ou desmarque essas contas.` });
+      }
+    }
+    return issues;
+  }
   for (const platform of platforms) {
     const label = PLATFORM_LABELS[platform];
     if (!supportsVideo(platform)) {

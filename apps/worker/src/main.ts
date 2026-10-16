@@ -2,7 +2,7 @@ import { config as loadEnv } from "dotenv";
 import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
-import { createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken } from "@fsp/connectors";
+import { createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken, refreshTikTokToken, type ConnectorOptions } from "@fsp/connectors";
 import { IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
 import { createPublishQueue, createRedisConnection, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
@@ -41,10 +41,23 @@ async function main(): Promise<void> {
     log,
   };
 
+  const tiktokCfg = {
+    clientKey: process.env.TIKTOK_CLIENT_KEY ?? "",
+    clientSecret: process.env.TIKTOK_CLIENT_SECRET ?? "",
+    redirectUri: `${process.env.AUTH_URL ?? "http://localhost:3022"}/api/oauth/tiktok/callback`,
+  };
+  const publisherOptions: ConnectorOptions = {
+    ...(process.env.TIKTOK_PRIVACY_LEVEL ? { tiktokPrivacyLevel: process.env.TIKTOK_PRIVACY_LEVEL } : {}),
+    ...(process.env.YOUTUBE_PRIVACY_STATUS ? { youtubePrivacyStatus: process.env.YOUTUBE_PRIVACY_STATUS as ConnectorOptions["youtubePrivacyStatus"] } : {}),
+  };
+
   const deps: ProcessorDeps = {
     repo: prismaTargetRepository(prisma),
     cipher,
-    publisherFor: (platform) => createPublisher(platform),
+    publisherFor: (platform) => createPublisher(platform, publisherOptions),
+    ...(tiktokCfg.clientKey
+      ? { tiktok: { refresh: async (rt: string) => { const t = await refreshTikTokToken(tiktokCfg, rt); return { accessToken: t.accessToken, expiresAt: t.expiresAt, refreshToken: t.refreshToken }; } } }
+      : {}),
     segments: { ensure: (mediaId) => ensureStorySegments(segmentDeps, mediaId) },
     google: {
       async refresh(refreshToken) {

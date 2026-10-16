@@ -47,6 +47,10 @@ export interface ConnectorOptions {
   fetch?: FetchLike;
   /** Para o polling do container do Instagram. */
   sleep?: (ms: number) => Promise<void>;
+  /** TikTok: nível de privacidade preferido (PUBLIC_TO_EVERYONE, SELF_ONLY...). */
+  tiktokPrivacyLevel?: string;
+  /** YouTube: public (padrão), private ou unlisted. */
+  youtubePrivacyStatus?: "public" | "private" | "unlisted";
 }
 
 export function splitMedia(media: readonly MediaRef[]): { images: string[]; video: string | undefined } {

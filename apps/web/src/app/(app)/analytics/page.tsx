@@ -58,6 +58,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             <option value="INSTAGRAM">Instagram</option>
             <option value="FACEBOOK_PAGE">Facebook</option>
             <option value="GOOGLE_BUSINESS_PROFILE">Google Meu Negócio</option>
+            <option value="TIKTOK">TikTok</option>
+            <option value="YOUTUBE">YouTube</option>
           </select>
           <button className="btn small" type="submit">Filtrar</button>
         </form>

@@ -1,16 +1,20 @@
 /** Plataformas suportadas. Espelha o enum Platform do Prisma. */
-export type Platform = "FACEBOOK_PAGE" | "INSTAGRAM" | "GOOGLE_BUSINESS_PROFILE";
+export type Platform = "FACEBOOK_PAGE" | "INSTAGRAM" | "GOOGLE_BUSINESS_PROFILE" | "TIKTOK" | "YOUTUBE";
 
 export const PLATFORMS: readonly Platform[] = [
   "FACEBOOK_PAGE",
   "INSTAGRAM",
   "GOOGLE_BUSINESS_PROFILE",
+  "TIKTOK",
+  "YOUTUBE",
 ];
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
   FACEBOOK_PAGE: "Facebook",
   INSTAGRAM: "Instagram",
   GOOGLE_BUSINESS_PROFILE: "Google Meu Negócio",
+  TIKTOK: "TikTok",
+  YOUTUBE: "YouTube",
 };
 
 /** Limite de caracteres do texto por plataforma (valores publicados pelas plataformas). */
@@ -18,13 +22,28 @@ export const CAPTION_LIMITS: Record<Platform, number> = {
   FACEBOOK_PAGE: 63_206,
   INSTAGRAM: 2_200,
   GOOGLE_BUSINESS_PROFILE: 1_500,
+  /** legenda (title) de vídeo; posts de foto têm título 90 + descrição 4000 */
+  TIKTOK: 2_200,
+  /** descrição; o título (100) é derivado da primeira linha, ver youtubeTitleFromCaption */
+  YOUTUBE: 5_000,
 };
 
-/** Instagram exige mídia (imagem ou vídeo); Facebook e GBP aceitam só texto. */
+/** Título do vídeo no YouTube: primeira linha da legenda, até 100 caracteres. */
+export const YOUTUBE_TITLE_LIMIT = 100;
+export function youtubeTitleFromCaption(caption: string, fallback = "Vídeo"): string {
+  const first = caption.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0) ?? "";
+  const chars = [...first];
+  if (chars.length === 0) return fallback;
+  return chars.length <= YOUTUBE_TITLE_LIMIT ? first : `${chars.slice(0, YOUTUBE_TITLE_LIMIT - 1).join("").trimEnd()}…`;
+}
+
+/** Instagram, TikTok e YouTube exigem mídia; Facebook e GBP aceitam só texto. */
 export const REQUIRES_MEDIA: Record<Platform, boolean> = {
   FACEBOOK_PAGE: false,
   INSTAGRAM: true,
   GOOGLE_BUSINESS_PROFILE: false,
+  TIKTOK: true,
+  YOUTUBE: true,
 };
 
 export interface CaptionIssue {
@@ -54,7 +73,7 @@ export function validateCaption(
     if (REQUIRES_MEDIA[platform] && !hasMedia) {
       issues.push({
         platform,
-        message: `${PLATFORM_LABELS[platform]} exige pelo menos uma imagem.`,
+        message: platform === "YOUTUBE" ? "YouTube exige um vídeo." : `${PLATFORM_LABELS[platform]} exige pelo menos uma imagem ou vídeo.`,
       });
     }
     if (!hasMedia && caption.trim().length === 0) {
@@ -75,9 +94,10 @@ export const POST_FORMAT_LABELS: Record<PostFormat, string> = {
 
 /** Quais plataformas aceitam cada formato via API. */
 export const FORMAT_SUPPORT: Record<PostFormat, readonly Platform[]> = {
-  FEED: ["FACEBOOK_PAGE", "INSTAGRAM", "GOOGLE_BUSINESS_PROFILE"],
+  FEED: ["FACEBOOK_PAGE", "INSTAGRAM", "GOOGLE_BUSINESS_PROFILE", "TIKTOK", "YOUTUBE"],
   STORY: ["FACEBOOK_PAGE", "INSTAGRAM"],
-  REEL: ["FACEBOOK_PAGE", "INSTAGRAM"],
+  /** Reel = vídeo vertical curto: Reels (Meta), vídeo do TikTok, Short do YouTube (até 3min). */
+  REEL: ["FACEBOOK_PAGE", "INSTAGRAM", "TIKTOK", "YOUTUBE"],
 };
 
 export interface FormatIssue {
@@ -138,6 +158,8 @@ export const FORMAT_VIDEO_RULES: Partial<Record<PostFormat, Partial<Record<Platf
   REEL: {
     INSTAGRAM: { maxSeconds: 15 * 60, maxBytes: 300 * 1024 * 1024 },
     FACEBOOK_PAGE: { maxSeconds: 90 },
+    TIKTOK: { maxSeconds: 10 * 60 },
+    YOUTUBE: { maxSeconds: 3 * 60 },
   },
 };
 

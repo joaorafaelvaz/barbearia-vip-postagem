@@ -1,6 +1,9 @@
 import { PublishError, type Platform } from "@fsp/core";
 import { GRAPH_BASE } from "./meta-config.js";
 import { GBP_POSTS_BASE } from "./google-business.js";
+import { TIKTOK_API } from "./oauth/tiktok.js";
+import { mapTikTokError } from "./tiktok.js";
+import { YOUTUBE_API } from "./youtube.js";
 import { defaultFetch, mapGoogleError, mapMetaError, readJson, safeFetch } from "./http.js";
 import type { AccountCredentials, ConnectorOptions, FetchLike } from "./types.js";
 
@@ -189,5 +192,68 @@ export function createInsightsFetcher(platform: Platform, options: ConnectorOpti
       return new InstagramInsights(options);
     case "GOOGLE_BUSINESS_PROFILE":
       return new GoogleBusinessInsights(options);
+    case "TIKTOK":
+      return new TikTokInsights(options);
+    case "YOUTUBE":
+      return new YouTubeInsights(options);
+  }
+}
+
+/** TikTok: métricas via /video/query (scope video.list). Views contam como alcance e impressões. */
+export class TikTokInsights implements InsightsFetcher {
+  readonly platform = "TIKTOK" as const;
+  private readonly f: FetchLike;
+  constructor(options: ConnectorOptions = {}) {
+    this.f = options.fetch ?? defaultFetch;
+  }
+  async fetch(account: AccountCredentials, externalPostId: string): Promise<PostMetrics> {
+    const res = await safeFetch(this.f, `${TIKTOK_API}/video/query/?fields=id,like_count,comment_count,share_count,view_count`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${account.accessToken}`, "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify({ filters: { video_ids: [externalPostId] } }),
+    });
+    const body = ((await readJson(res)) ?? {}) as { data?: { videos?: Array<Record<string, unknown>> }; error?: { code?: string } };
+    if (!res.ok || (body.error?.code && body.error.code !== "ok")) throw mapTikTokError(res.status, body);
+    const v = body.data?.videos?.[0];
+    const m = empty();
+    if (!v) {
+      m.partial = true;
+      m.note = "Vídeo não encontrado na conta (pode ter sido excluído).";
+      return m;
+    }
+    m.likes = num(v.like_count);
+    m.comments = num(v.comment_count);
+    m.shares = num(v.share_count);
+    m.reach = num(v.view_count);
+    m.impressions = num(v.view_count);
+    return m;
+  }
+}
+
+/** YouTube: videos.list part=statistics (1 unidade de cota). */
+export class YouTubeInsights implements InsightsFetcher {
+  readonly platform = "YOUTUBE" as const;
+  private readonly f: FetchLike;
+  constructor(options: ConnectorOptions = {}) {
+    this.f = options.fetch ?? defaultFetch;
+  }
+  async fetch(account: AccountCredentials, externalPostId: string): Promise<PostMetrics> {
+    const res = await safeFetch(this.f, `${YOUTUBE_API}/videos?part=statistics&id=${encodeURIComponent(externalPostId)}`, {
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+    });
+    const body = (await readJson(res)) as { items?: Array<{ statistics?: Record<string, unknown> }> } | undefined;
+    if (!res.ok) throw mapGoogleError(res.status, body, res.headers.get("retry-after"));
+    const st = body?.items?.[0]?.statistics;
+    const m = empty();
+    if (!st) {
+      m.partial = true;
+      m.note = "Vídeo não encontrado no canal.";
+      return m;
+    }
+    m.likes = num(st.likeCount);
+    m.comments = num(st.commentCount);
+    m.reach = num(st.viewCount);
+    m.impressions = num(st.viewCount);
+    return m;
   }
 }

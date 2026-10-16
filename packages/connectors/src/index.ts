@@ -2,6 +2,8 @@ import type { Platform } from "@fsp/core";
 import { FacebookPagePublisher } from "./facebook.js";
 import { GoogleBusinessProfilePublisher } from "./google-business.js";
 import { InstagramPublisher } from "./instagram.js";
+import { TikTokPublisher } from "./tiktok.js";
+import { YouTubePublisher } from "./youtube.js";
 import type { ConnectorOptions, Publisher } from "./types.js";
 
 export * from "./types.js";
@@ -12,6 +14,10 @@ export * from "./instagram-profile.js";
 export * from "./google-business.js";
 export * from "./oauth/meta.js";
 export * from "./oauth/google.js";
+export * from "./oauth/tiktok.js";
+export * from "./oauth/youtube.js";
+export * from "./tiktok.js";
+export * from "./youtube.js";
 export * from "./insights.js";
 export * from "./imports.js";
 export { mapMetaError, mapGoogleError } from "./http.js";
@@ -25,5 +31,9 @@ export function createPublisher(platform: Platform, options: ConnectorOptions = 
       return new InstagramPublisher(options);
     case "GOOGLE_BUSINESS_PROFILE":
       return new GoogleBusinessProfilePublisher(options);
+    case "TIKTOK":
+      return new TikTokPublisher(options);
+    case "YOUTUBE":
+      return new YouTubePublisher(options);
   }
 }

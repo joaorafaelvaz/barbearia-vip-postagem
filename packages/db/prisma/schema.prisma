@@ -77,6 +77,8 @@ enum Platform {
   FACEBOOK_PAGE
   INSTAGRAM
   GOOGLE_BUSINESS_PROFILE
+  TIKTOK
+  YOUTUBE
 }
 
 /// Conta de uma plataforma vinculada a uma unidade. Tokens sempre criptografados (AES-GCM).

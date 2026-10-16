@@ -100,6 +100,39 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
    `https://SEU-DOMINIO/api/oauth/google/callback` e preencha `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
 4. O usuário que conecta deve ser proprietário/gerente dos perfis das unidades.
 
+### TikTok
+
+1. Crie um app em <https://developers.tiktok.com/> e adicione os produtos **Login Kit** e
+   **Content Posting API** (Direct Post). Cadastre o redirect
+   `https://SEU-DOMINIO/api/oauth/tiktok/callback` e peça os escopos `user.info.basic`,
+   `video.publish`, `video.upload` e `video.list`.
+2. Em **URL properties**, verifique o domínio público do app (`SEU-DOMINIO`): o TikTok baixa
+   as mídias das nossas URLs (`PULL_FROM_URL`) e recusa domínios não verificados
+   (`url_ownership_unverified`).
+3. Copie **Client key** e **Client secret** para `TIKTOK_CLIENT_KEY` e `TIKTOK_CLIENT_SECRET`.
+   O botão "TikTok" aparece em Unidades e contas; cada autorização vincula uma conta.
+4. Enquanto o app não passa pela **auditoria** do TikTok, só é possível publicar como privado
+   (`SELF_ONLY`): o sistema escolhe automaticamente o nível mais aberto que a conta aceita
+   (`TIKTOK_PRIVACY_LEVEL` define a preferência). Vídeo vira post de vídeo (legenda até 2.200);
+   imagens viram post de fotos (até 35, título = primeira linha, descrição até 4.000).
+   Limites: 6 publicações por minuto por conta; token de acesso de 24h renovado pelo worker
+   com o refresh token (365 dias).
+
+### YouTube
+
+1. No mesmo projeto Google do Meu Negócio, habilite a **YouTube Data API v3** e adicione o
+   redirect `https://SEU-DOMINIO/api/oauth/youtube/callback` ao client OAuth. Escopos:
+   `youtube.upload` e `youtube.readonly` (sensíveis: exigem verificação do app pelo Google).
+2. O botão "YouTube" em Unidades e contas vincula o canal da conta Google autorizada.
+3. **Cota**: cada upload custa 1.600 das 10.000 unidades diárias do projeto, ou seja, cerca de
+   6 vídeos por dia somando todas as unidades. Para uma rede, solicite aumento de cota no
+   Google Cloud (formulário "YouTube API Services - Audit and Quota Extension"). Quando a cota
+   estoura, o alvo fica em retentativa automática (uma hora entre tentativas).
+4. Enquanto o app Google não está verificado, os vídeos enviados pela API ficam **privados**.
+   `YOUTUBE_PRIVACY_STATUS` define o padrão (public, unlisted, private).
+5. Só vídeo: o título é a primeira linha da legenda (até 100 caracteres) e a descrição é a
+   legenda inteira (até 5.000). Reel = Short (vertical, até 3 min, marcado com a tag Shorts).
+
 ### Formatos: Feed, Story e Reel
 
 Na composição escolha o formato. **Feed** é o padrão (imagens, carrossel ou vídeo; única opção
@@ -242,7 +275,7 @@ atualizado pela mesma coleta de métricas.
 
 ## Perfis (gestão de perfil)
 
-O menu **Perfis** lista as contas conectadas de cada unidade. Para o Instagram, a página da
+O menu **Perfis** lista as contas conectadas de cada unidade (TikTok e YouTube aparecem como "em breve"). Para o Instagram, a página da
 conta mostra o perfil (foto, seguidores, bio), a grade de publicações lida ao vivo da API e,
 por publicação: abrir no Instagram, comentários (responder, ocultar/mostrar, excluir) e
 excluir a publicação. Excluir uma mídia publicada pelo sistema marca o alvo como CANCELLED

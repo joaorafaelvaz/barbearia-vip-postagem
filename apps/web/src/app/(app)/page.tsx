@@ -79,6 +79,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <option value="INSTAGRAM">Instagram</option>
             <option value="FACEBOOK_PAGE">Facebook</option>
             <option value="GOOGLE_BUSINESS_PROFILE">Google Meu Negócio</option>
+            <option value="TIKTOK">TikTok</option>
+            <option value="YOUTUBE">YouTube</option>
           </select>
           <label className="visually-hidden" htmlFor="f-status">Status</label>
           <select id="f-status" name="status" defaultValue={sp.status ?? ""}>

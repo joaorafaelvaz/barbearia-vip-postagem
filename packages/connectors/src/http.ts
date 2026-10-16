@@ -29,7 +29,7 @@ export function mapMetaError(status: number, body: unknown): PublishError {
 }
 
 interface GoogleErrorBody {
-  error?: { message?: string; status?: string; code?: number; details?: unknown[] };
+  error?: { message?: string; status?: string; code?: number; details?: unknown[]; errors?: Array<{ reason?: string; message?: string }> };
 }
 
 /** Mapeia erros das APIs Google para PublishError. */
@@ -38,13 +38,16 @@ export function mapGoogleError(status: number, body: unknown, retryAfterHeader?:
   const message = err?.message ?? `Google API respondeu ${status}`;
   const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) || undefined : undefined;
   let kind: PublishErrorCode = "UNKNOWN";
+  const reasons = (err?.errors ?? []).map((e) => e.reason ?? "").join(",");
   if (status === 401) kind = "INVALID_TOKEN";
-  else if (status === 429 || err?.status === "RESOURCE_EXHAUSTED") kind = "RATE_LIMITED";
+  else if (status === 429 || err?.status === "RESOURCE_EXHAUSTED" || /quotaExceeded|rateLimitExceeded|userRateLimitExceeded/.test(reasons)) kind = "RATE_LIMITED";
   else if (status === 403) kind = "PERMISSION_DENIED";
   else if (status === 400) kind = /media|image|photo/i.test(message) ? "MEDIA_REJECTED" : "VALIDATION";
   else if (status >= 500) kind = "UPSTREAM_UNAVAILABLE";
   const opts: { upstreamStatus: number; retryAfterSeconds?: number } = { upstreamStatus: status };
   if (retryAfterSeconds !== undefined) opts.retryAfterSeconds = retryAfterSeconds;
+  // Cota diária do YouTube zera à meia-noite (Pacífico): espera 1h entre tentativas.
+  else if (/quotaExceeded/.test(reasons)) opts.retryAfterSeconds = 3600;
   return new PublishError(kind, message, opts);
 }
 

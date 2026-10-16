@@ -41,11 +41,17 @@ export interface TargetRepository {
   markFailed(id: string, attempts: number, error: string): Promise<void>;
   /** Volta para SCHEDULED guardando erro e tentativas, para retentativa. */
   markRetry(id: string, attempts: number, error: string): Promise<void>;
-  updateAccountToken(accountId: string, accessTokenEnc: string, expiresAt: Date): Promise<void>;
+  /** Grava o token renovado; `refreshTokenEnc` quando a plataforma rotaciona o refresh token (TikTok). */
+  updateAccountToken(accountId: string, accessTokenEnc: string, expiresAt: Date, refreshTokenEnc?: string): Promise<void>;
 }
 
 export interface GoogleTokenRefresher {
   refresh(refreshToken: string): Promise<{ accessToken: string; expiresAt: Date }>;
+}
+
+/** TikTok: access token dura 24h; o refresh token (365d) pode ser trocado a cada renovação. */
+export interface TikTokTokenRefresher {
+  refresh(refreshToken: string): Promise<{ accessToken: string; expiresAt: Date; refreshToken?: string }>;
 }
 
 export interface ProcessorDeps {
@@ -53,6 +59,7 @@ export interface ProcessorDeps {
   cipher: Pick<TokenCipher, "encrypt" | "decrypt">;
   publisherFor(platform: Platform): Publisher;
   google: GoogleTokenRefresher;
+  tiktok?: TikTokTokenRefresher;
   /** Corte de vídeo longo para Stories (ausente em testes: publica a mídia original). */
   segments?: { ensure(mediaId: string): Promise<SegmentRef[]> };
   now?: () => Date;
@@ -120,16 +127,25 @@ export async function processTarget(deps: ProcessorDeps, postTargetId: string): 
 }
 
 /** Token em claro da conta; renova o do Google quando está perto de expirar. Também usado pela coleta de métricas. */
-export async function resolveAccessToken(deps: Pick<ProcessorDeps, "cipher" | "google" | "repo">, target: Pick<TargetRecord, "account">, now: Date): Promise<string> {
+export async function resolveAccessToken(deps: Pick<ProcessorDeps, "cipher" | "google" | "repo" | "tiktok">, target: Pick<TargetRecord, "account">, now: Date): Promise<string> {
   const { account } = target;
   const current = deps.cipher.decrypt(account.accessTokenEnc);
-  if (account.platform !== "GOOGLE_BUSINESS_PROFILE") return current;
+  const refreshable = account.platform === "GOOGLE_BUSINESS_PROFILE" || account.platform === "YOUTUBE" || account.platform === "TIKTOK";
+  if (!refreshable) return current;
 
   const expiresAt = account.tokenExpiresAt?.getTime() ?? 0;
   if (expiresAt - now.getTime() > TOKEN_REFRESH_MARGIN_MS) return current;
   if (!account.refreshTokenEnc) return current;
+  const refreshToken = deps.cipher.decrypt(account.refreshTokenEnc);
 
-  const refreshed = await deps.google.refresh(deps.cipher.decrypt(account.refreshTokenEnc));
+  if (account.platform === "TIKTOK") {
+    if (!deps.tiktok) throw new PublishError("INVALID_TOKEN", "Token do TikTok expirado e o worker está sem TIKTOK_CLIENT_KEY/SECRET para renovar.");
+    const r = await deps.tiktok.refresh(refreshToken);
+    const rotated = r.refreshToken && r.refreshToken !== refreshToken ? deps.cipher.encrypt(r.refreshToken) : undefined;
+    await deps.repo.updateAccountToken(account.id, deps.cipher.encrypt(r.accessToken), r.expiresAt, rotated);
+    return r.accessToken;
+  }
+  const refreshed = await deps.google.refresh(refreshToken);
   await deps.repo.updateAccountToken(account.id, deps.cipher.encrypt(refreshed.accessToken), refreshed.expiresAt);
   return refreshed.accessToken;
 }

@@ -154,3 +154,6 @@ input[aria-invalid=true], textarea[aria-invalid=true] { border-color: var(--err)
 .pf-reply { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .pf-reply textarea { width: 100%; }
 @media (max-width: 640px) { .pf-header { flex-direction: column; } }
+
+.pv-card.yt .pv-ytthumb { width: 100%; background: #000; overflow: hidden; position: relative; }
+.pv-card.yt .pv-ytthumb .pv-media { position: absolute; inset: 0; }

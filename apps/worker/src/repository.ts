@@ -77,8 +77,8 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
       await prisma.postTarget.update({ where: { id }, data: { status: "SCHEDULED", attempts, lastError: error } });
     },
 
-    async updateAccountToken(accountId, accessTokenEnc, expiresAt) {
-      await prisma.connectedAccount.update({ where: { id: accountId }, data: { accessTokenEnc, tokenExpiresAt: expiresAt } });
+    async updateAccountToken(accountId, accessTokenEnc, expiresAt, refreshTokenEnc) {
+      await prisma.connectedAccount.update({ where: { id: accountId }, data: { accessTokenEnc, tokenExpiresAt: expiresAt, ...(refreshTokenEnc ? { refreshTokenEnc } : {}) } });
     },
   };
 }

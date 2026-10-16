@@ -1,6 +1,6 @@
 "use client";
 
-import { STORY_MAX_VIDEO_SECONDS, planStorySegments, type Platform } from "@fsp/core/platforms";
+import { STORY_MAX_VIDEO_SECONDS, planStorySegments, youtubeTitleFromCaption, type Platform } from "@fsp/core/platforms";
 import { IconMapPin } from "./Icons";
 import type { Uploaded } from "./MediaPicker";
 
@@ -83,6 +83,18 @@ export function Vertical({ kind, platform, name, caption, media, coverUrl }: { k
           {coverUrl && <span className="pv-parts">Capa personalizada</span>}
         </>
       )}
+    </div>
+  );
+}
+
+/** YouTube: miniatura (capa ou primeiro quadro), título da primeira linha e canal. Vertical curto vira Short. */
+export function YouTubeCard({ name, caption, media, coverUrl }: { name: string; caption: string; media: Uploaded[]; coverUrl?: string }) {
+  const first = media.find((m) => m.kind === "VIDEO");
+  const vertical = first && first.width && first.height ? first.height > first.width : false;
+  return (
+    <div className="pv-card yt">
+      <div className="pv-ytthumb" style={{ aspectRatio: vertical ? "9 / 16" : "16 / 9" }}><Media m={first} poster={coverUrl} />{vertical && <span className="pv-count">Short</span>}</div>
+      <div className="pv-head"><Avatar label={name} /><span><strong>{youtubeTitleFromCaption(caption)}</strong><br /><small>{name} · agora</small></span></div>
     </div>
   );
 }

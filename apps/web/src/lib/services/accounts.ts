@@ -102,3 +102,47 @@ export async function listUnitsWithAccounts(prisma: PrismaClient, organizationId
     },
   });
 }
+
+/** Vincula a conta TikTok autorizada à unidade (access token 24h + refresh token 365d). */
+export async function connectTikTokAccount(
+  deps: Deps,
+  organizationId: string,
+  unitId: string,
+  tokens: { accessToken: string; refreshToken: string; expiresAt: Date; openId: string },
+  user: { openId: string; displayName: string },
+) {
+  await assertUnit(deps.prisma, organizationId, unitId);
+  const externalId = user.openId || tokens.openId;
+  const data = {
+    displayName: `TikTok: ${user.displayName}`,
+    accessTokenEnc: deps.cipher.encrypt(tokens.accessToken),
+    refreshTokenEnc: deps.cipher.encrypt(tokens.refreshToken),
+    tokenExpiresAt: tokens.expiresAt,
+  };
+  await deps.prisma.connectedAccount.upsert({
+    where: { organizationId_platform_externalId: { organizationId, platform: "TIKTOK", externalId } },
+    create: { organizationId, unitId, platform: "TIKTOK", externalId, ...data },
+    update: { unitId, ...data, isActive: true },
+  });
+}
+
+/** Vincula canais do YouTube à unidade (tokens Google com refresh). */
+export async function connectYouTubeChannels(
+  deps: Deps,
+  organizationId: string,
+  unitId: string,
+  tokens: { accessToken: string; refreshToken: string; expiresAt: Date },
+  channels: Array<{ id: string; title: string; customUrl?: string }>,
+) {
+  await assertUnit(deps.prisma, organizationId, unitId);
+  const accessTokenEnc = deps.cipher.encrypt(tokens.accessToken);
+  const refreshTokenEnc = deps.cipher.encrypt(tokens.refreshToken);
+  for (const ch of channels) {
+    const data = { displayName: ch.customUrl ? `${ch.title} (${ch.customUrl})` : ch.title, accessTokenEnc, refreshTokenEnc, tokenExpiresAt: tokens.expiresAt };
+    await deps.prisma.connectedAccount.upsert({
+      where: { organizationId_platform_externalId: { organizationId, platform: "YOUTUBE", externalId: ch.id } },
+      create: { organizationId, unitId, platform: "YOUTUBE", externalId: ch.id, ...data },
+      update: { unitId, ...data, isActive: true },
+    });
+  }
+}

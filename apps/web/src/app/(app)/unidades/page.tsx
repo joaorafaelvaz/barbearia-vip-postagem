@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PlatformBadge } from "@/components/Badges";
 import { DeleteUnitButton } from "@/components/DeleteUnitButton";
 import { DisconnectButton } from "@/components/DisconnectButton";
-import { IconAlert, IconCheck, IconFacebook, IconMapPin, IconStore } from "@/components/Icons";
+import { IconAlert, IconCheck, IconFacebook, IconMapPin, IconStore, IconTikTok, IconYouTube } from "@/components/Icons";
 import { UnitForm } from "@/components/UnitForm";
 import { allowedUnitIds, isAdmin } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -13,6 +13,10 @@ const ERRORS: Record<string, string> = {
   meta_state: "A autorização da Meta não pôde ser validada. Tente novamente.",
   google_state: "A autorização do Google não pôde ser validada. Tente novamente.",
   google_refresh: "O Google não devolveu um refresh token. Remova o acesso do app na sua conta Google e autorize de novo.",
+  tiktok_state: "A autorização do TikTok não pôde ser validada. Tente novamente.",
+  youtube_state: "A autorização do YouTube não pôde ser validada. Tente novamente.",
+  youtube_refresh: "O Google não devolveu um refresh token para o YouTube. Remova o acesso do app na sua conta Google e autorize de novo.",
+  youtube_nochannel: "A conta Google autorizada não tem canal no YouTube.",
 };
 
 export default async function UnitsPage({ searchParams }: { searchParams: Promise<{ erro?: string; ok?: string }> }) {
@@ -22,6 +26,7 @@ export default async function UnitsPage({ searchParams }: { searchParams: Promis
   const units = await listUnitsWithAccounts(prisma, s.organizationId, await allowedUnitIds(prisma, s));
   const hasMeta = Boolean(process.env.META_APP_ID);
   const hasGoogle = Boolean(process.env.GOOGLE_CLIENT_ID);
+  const hasTikTok = Boolean(process.env.TIKTOK_CLIENT_KEY);
 
   return (
     <div className="stack lg">
@@ -56,6 +61,8 @@ export default async function UnitsPage({ searchParams }: { searchParams: Promis
                 <div className="row">
                   {hasMeta && <Link className="btn small" href={`/api/oauth/meta/start?unitId=${u.id}`}><IconFacebook size="sm" /> Facebook/Instagram</Link>}
                   {hasGoogle && <Link className="btn small" href={`/api/oauth/google/start?unitId=${u.id}`}><IconMapPin size="sm" /> Google</Link>}
+                  {hasTikTok && <Link className="btn small" href={`/api/oauth/tiktok/start?unitId=${u.id}`}><IconTikTok size="sm" /> TikTok</Link>}
+                  {hasGoogle && <Link className="btn small" href={`/api/oauth/youtube/start?unitId=${u.id}`}><IconYouTube size="sm" /> YouTube</Link>}
                   {admin && <DeleteUnitButton id={u.id} name={u.name} />}
                 </div>
               </div>

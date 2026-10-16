@@ -31,6 +31,8 @@ export const IconLink = (p: P) => <I {...p}><path d="M10 13a5 5 0 0 0 7 0l3-3a5 
 export const IconMegaphone = (p: P) => <I {...p}><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M14 9a4 4 0 0 1 0 6M17 6a8 8 0 0 1 0 12" /></I>;
 export const IconFacebook = (p: P) => <I {...p}><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" /></I>;
 export const IconInstagram = (p: P) => <I {...p}><rect x="2" y="2" width="20" height="20" rx="5" /><circle cx="12" cy="12" r="4" /><path d="M17.5 6.5h.01" /></I>;
+export const IconTikTok = (p: P) => <I {...p}><path d="M9 12a4 4 0 1 0 4 4V4c.5 2.5 2.5 4 5 4" /></I>;
+export const IconYouTube = (p: P) => <I {...p}><path d="M22.5 7.5a3 3 0 0 0-2.1-2.1C18.5 5 12 5 12 5s-6.5 0-8.4.4A3 3 0 0 0 1.5 7.5 31 31 0 0 0 1 12a31 31 0 0 0 .5 4.5 3 3 0 0 0 2.1 2.1C5.5 19 12 19 12 19s6.5 0 8.4-.4a3 3 0 0 0 2.1-2.1A31 31 0 0 0 23 12a31 31 0 0 0-.5-4.5z" /><path d="M10 9l5 3-5 3z" /></I>;
 export const IconMapPin = (p: P) => <I {...p}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></I>;
 
 export const IconAtSign = (p: P) => <I {...p}><circle cx="12" cy="12" r="4" /><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" /></I>;
@@ -43,5 +45,7 @@ export const IconShield = (p: P) => <I {...p}><path d="M12 2l8 4v6c0 5-3.5 8.5-8
 export function PlatformIcon({ platform, size }: { platform: string; size?: "sm" | "md" }) {
   if (platform === "FACEBOOK_PAGE") return <IconFacebook size={size} />;
   if (platform === "INSTAGRAM") return <IconInstagram size={size} />;
+  if (platform === "TIKTOK") return <IconTikTok size={size} />;
+  if (platform === "YOUTUBE") return <IconYouTube size={size} />;
   return <IconMapPin size={size} />;
 }

@@ -9,7 +9,7 @@ export interface OAuthState {
   organizationId: string;
   userId: string;
   unitId: string;
-  provider: "meta" | "google";
+  provider: "meta" | "google" | "tiktok" | "youtube";
   nonce: string;
 }
 
