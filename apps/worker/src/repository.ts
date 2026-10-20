@@ -29,7 +29,7 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
         post: {
           caption: t.post.caption,
           format: t.post.format as PostFormat,
-          media: t.post.media.map((m) => ({ id: m.media.id, url: m.media.publicUrl, kind: m.media.kind as MediaKind, durationSec: m.media.durationSec })),
+          media: t.post.media.map((m) => ({ id: m.media.id, url: m.media.publicUrl, kind: m.media.kind as MediaKind, durationSec: m.media.durationSec, normalized: m.media.normalizedAt !== null })),
           ...(t.post.coverMedia || t.post.coverOffsetMs !== null
             ? { cover: { ...(t.post.coverMedia ? { imageUrl: t.post.coverMedia.publicUrl } : {}), ...(t.post.coverOffsetMs !== null ? { offsetMs: t.post.coverOffsetMs } : {}) } }
             : {}),
@@ -203,7 +203,23 @@ export function prismaSegmentRepository(prisma: PrismaClient): SegmentRepository
     async loadMedia(id): Promise<SourceMedia | null> {
       const m = await prisma.mediaAsset.findUnique({ where: { id } });
       if (!m) return null;
-      return { id: m.id, organizationId: m.organizationId, kind: m.kind, storageKey: m.storageKey, publicUrl: m.publicUrl, width: m.width, height: m.height, durationSec: m.durationSec };
+      return { id: m.id, organizationId: m.organizationId, kind: m.kind, storageKey: m.storageKey, publicUrl: m.publicUrl, width: m.width, height: m.height, durationSec: m.durationSec, normalizedAt: m.normalizedAt, normalizeNote: m.normalizeNote };
+    },
+    async markNormalized(id, data) {
+      await prisma.mediaAsset.update({
+        where: { id },
+        data: {
+          normalizedAt: new Date(),
+          normalizeNote: data.note,
+          width: data.width,
+          height: data.height,
+          durationSec: data.durationSec,
+          ...(data.storageKey ? { storageKey: data.storageKey } : {}),
+          ...(data.publicUrl ? { publicUrl: data.publicUrl } : {}),
+          ...(data.bytes !== undefined ? { bytes: data.bytes } : {}),
+          ...(data.mimeType ? { mimeType: data.mimeType } : {}),
+        },
+      });
     },
     async listSegments(parentId) {
       const rows = await prisma.mediaAsset.findMany({ where: { parentId }, orderBy: { segmentIndex: "asc" } });

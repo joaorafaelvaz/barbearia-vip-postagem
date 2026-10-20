@@ -11,7 +11,7 @@ import {
 import { needsStorySplit, type SegmentRef } from "./segments.js";
 
 /** Mídia do post com o que o corte para Stories precisa saber. */
-export type TargetMedia = MediaRef & { id?: string; durationSec?: number | null };
+export type TargetMedia = MediaRef & { id?: string; durationSec?: number | null; normalized?: boolean };
 
 /** Visão do PostTarget que o processador precisa (carregada pelo repositório). */
 export interface TargetRecord {
@@ -61,7 +61,11 @@ export interface ProcessorDeps {
   google: GoogleTokenRefresher;
   tiktok?: TikTokTokenRefresher;
   /** Corte de vídeo longo para Stories (ausente em testes: publica a mídia original). */
-  segments?: { ensure(mediaId: string): Promise<SegmentRef[]> };
+  segments?: {
+    ensure(mediaId: string): Promise<SegmentRef[]>;
+    /** Normaliza um vídeo (H.264 SDR) antes de publicar; devolve a URL a usar. */
+    normalize?(mediaId: string): Promise<{ url: string } | null>;
+  };
   now?: () => Date;
   log?: (msg: string, meta?: Record<string, unknown>) => void;
 }
@@ -106,6 +110,14 @@ export async function processTarget(deps: ProcessorDeps, postTargetId: string): 
       ...(target.post.cover ? { cover: target.post.cover } : {}),
     };
     const publisher = deps.publisherFor(target.account.platform);
+    // Vídeo ainda não normalizado (upload recente ou job perdido): normaliza agora, antes de publicar.
+    for (const m of target.post.media) {
+      if (m.kind === "VIDEO" && m.id && !m.normalized && deps.segments?.normalize) {
+        const r = await deps.segments.normalize(m.id);
+        if (r) { m.url = r.url; m.normalized = true; }
+      }
+    }
+    input.media = target.post.media;
     const parts = await storyParts(deps, target);
     const result = parts ? await publishInParts(publisher, input, parts) : await publisher.publish(input);
     await deps.repo.markPublished(target.id, result);

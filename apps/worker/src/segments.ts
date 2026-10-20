@@ -19,6 +19,21 @@ export interface SourceMedia {
   width: number;
   height: number;
   durationSec: number | null;
+  /** preenchido quando o vídeo já passou pela normalização (ou foi considerado ok) */
+  normalizedAt: Date | null;
+  normalizeNote: string | null;
+}
+
+export interface NormalizedData {
+  note: string;
+  width: number;
+  height: number;
+  durationSec: number;
+  /** presentes quando o arquivo foi recodificado (URL nova) */
+  storageKey?: string;
+  publicUrl?: string;
+  bytes?: number;
+  mimeType?: string;
 }
 
 export interface SegmentRef {
@@ -36,6 +51,8 @@ export interface SegmentRepository {
   releaseSplit(id: string): Promise<void>;
   deleteSegments(parentId: string): Promise<void>;
   createSegment(parent: SourceMedia, seg: { index: number; storageKey: string; publicUrl: string; bytes: number; durationSec: number }): Promise<SegmentRef>;
+  /** Registra a normalização (e o arquivo novo, se houve recodificação). */
+  markNormalized(id: string, data: NormalizedData): Promise<void>;
 }
 
 export interface SplitSource {

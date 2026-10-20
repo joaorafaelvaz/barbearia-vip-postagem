@@ -141,6 +141,16 @@ não suportam); no Facebook usa `photo_stories`/`video_stories`, no Instagram `m
 **Reel** exige um vídeo; no Facebook usa `video_reels` (upload em fases por URL), no Instagram
 `media_type=REELS`. Story e Reel só em Facebook e Instagram.
 
+### Normalização de vídeo
+
+Todo vídeo enviado é examinado pelo worker (`ffprobe`) assim que o upload termina (job
+`prepare-media`). Se não estiver no formato seguro, é recodificado com `ffmpeg` para H.264
+High 8 bits, SDR BT.709 (com tone mapping quando a origem é HDR), fps constante, AAC e
+faststart, e o `MediaAsset` passa a apontar para o arquivo novo. Motivos que disparam a
+recodificação: marcação HDR (HLG/PQ ou primárias BT.2020, que deixa Stories pretos no iPhone),
+HEVC, 10 bits, fps variável e dimensões ímpares. Se um vídeo ainda não foi normalizado na hora de
+publicar, o worker normaliza antes de enviar. `normalizeNote` no banco diz o que foi feito.
+
 ### Corte automático para Stories
 
 Stories aceitam vídeo de até 60s (Instagram e Facebook). Ao agendar um Story com vídeo mais

@@ -134,6 +134,9 @@ model MediaAsset {
   segmentIndex   Int?
   /// trava do corte automático: worker que está gerando as partes
   splitStartedAt DateTime?
+  /// vídeo normalizado (H.264 8 bits, SDR BT.709, fps constante) ou verificado como ok
+  normalizedAt   DateTime?
+  normalizeNote  String?
   createdAt      DateTime  @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

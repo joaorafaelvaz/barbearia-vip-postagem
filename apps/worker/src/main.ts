@@ -12,6 +12,8 @@ import { collectMetrics } from "./metrics.js";
 import { reconcileTargets } from "./reconcile.js";
 import { processTarget, resolveAccessToken, type ProcessorDeps } from "./processor.js";
 import { prismaImportRepository, prismaMetricsRepository, prismaReconcileRepository, prismaSegmentRepository, prismaTargetRepository } from "./repository.js";
+import { ensureNormalized, type NormalizeDeps } from "./normalize.js";
+import { ffmpegTranscoder, ffprobeProber } from "./normalize-ffmpeg.js";
 import { ensureStorySegments, ffmpegSplitter, type SegmentDeps } from "./segments.js";
 import { getStorage, uploadsDir } from "./storage.js";
 
@@ -34,12 +36,10 @@ async function main(): Promise<void> {
   };
 
   const log = (msg: string, meta?: Record<string, unknown>) => console.log(JSON.stringify({ ts: new Date().toISOString(), msg, ...meta }));
-  const segmentDeps: SegmentDeps = {
-    repo: prismaSegmentRepository(prisma),
-    storage: await getStorage(),
-    splitter: ffmpegSplitter(),
-    log,
-  };
+  const segmentRepo = prismaSegmentRepository(prisma);
+  const storage = await getStorage();
+  const segmentDeps: SegmentDeps = { repo: segmentRepo, storage, splitter: ffmpegSplitter(), log };
+  const normalizeDeps: NormalizeDeps = { repo: segmentRepo, storage, prober: ffprobeProber(), transcoder: ffmpegTranscoder(), log };
 
   const tiktokCfg = {
     clientKey: process.env.TIKTOK_CLIENT_KEY ?? "",
@@ -58,7 +58,10 @@ async function main(): Promise<void> {
     ...(tiktokCfg.clientKey
       ? { tiktok: { refresh: async (rt: string) => { const t = await refreshTikTokToken(tiktokCfg, rt); return { accessToken: t.accessToken, expiresAt: t.expiresAt, refreshToken: t.refreshToken }; } } }
       : {}),
-    segments: { ensure: (mediaId) => ensureStorySegments(segmentDeps, mediaId) },
+    segments: {
+      ensure: (mediaId) => ensureStorySegments(segmentDeps, mediaId),
+      normalize: async (mediaId) => { const r = await ensureNormalized(normalizeDeps, mediaId); return r ? { url: r.url } : null; },
+    },
     google: {
       async refresh(refreshToken) {
         requireEnv("GOOGLE_CLIENT_ID");
@@ -80,8 +83,10 @@ async function main(): Promise<void> {
         return reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
       }
       if (job.name === PREPARE_MEDIA_JOB_NAME) {
-        const parts = await ensureStorySegments(segmentDeps, (job.data as PrepareMediaJobData).mediaId);
-        return { parts: parts.length };
+        const mediaId = (job.data as PrepareMediaJobData).mediaId;
+        const normalized = await ensureNormalized(normalizeDeps, mediaId);
+        const parts = await ensureStorySegments(segmentDeps, mediaId);
+        return { normalized: normalized?.note ?? null, parts: parts.length };
       }
       if (job.name === IMPORT_JOB_NAME) {
         const data = job.data as ImportJobData;

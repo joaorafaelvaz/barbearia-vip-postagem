@@ -1,7 +1,9 @@
+import { enqueuePrepareMedia } from "@fsp/queue";
 import { NextResponse } from "next/server";
 import { HttpError, route } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { getStorage, MAX_VIDEO_BYTES, uploadMedia } from "@/lib/services/media";
+import { getQueue } from "@/lib/queue";
 import { requireSession } from "@/lib/session";
 
 /**
@@ -37,5 +39,7 @@ export const POST = route(async (req: Request) => {
     bytes,
     ...(videoMeta ? { videoMeta } : {}),
   });
+  // Vídeo: o worker normaliza (H.264 SDR, fps constante) já agora, antes de qualquer publicação.
+  if (result.kind === "VIDEO") await enqueuePrepareMedia(getQueue(), result.id).catch(() => undefined);
   return NextResponse.json(result, { status: 201 });
 });

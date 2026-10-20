@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ensureStorySegments, needsStorySplit, type SegmentDeps, type SegmentRef, type SegmentRepository, type SourceMedia } from "../segments.js";
 import type { Storage } from "../storage.js";
 
-const video: SourceMedia = { id: "m1", organizationId: "org", kind: "VIDEO", storageKey: "org/x.mp4", publicUrl: "https://cdn/x.mp4", width: 1080, height: 1920, durationSec: 105 };
+const video: SourceMedia = { id: "m1", organizationId: "org", kind: "VIDEO", storageKey: "org/x.mp4", publicUrl: "https://cdn/x.mp4", width: 1080, height: 1920, durationSec: 105, normalizedAt: null, normalizeNote: null };
 
 function fakeRepo(media: SourceMedia | null, opts: { claim?: boolean; preset?: SegmentRef[] } = {}) {
   const segments: SegmentRef[] = [...(opts.preset ?? [])];
@@ -16,6 +16,7 @@ function fakeRepo(media: SourceMedia | null, opts: { claim?: boolean; preset?: S
     claimSplit: async () => { calls.claim++; return opts.claim ?? true; },
     releaseSplit: async () => { calls.release++; },
     deleteSegments: async () => { calls.deleted++; segments.length = 0; },
+    markNormalized: async () => {},
     createSegment: async (_p, seg) => {
       const ref = { id: `seg${seg.index}`, url: seg.publicUrl, index: seg.index, durationSec: seg.durationSec };
       segments.push(ref);
