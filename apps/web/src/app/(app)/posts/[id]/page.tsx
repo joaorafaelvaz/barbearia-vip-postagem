@@ -6,7 +6,9 @@ import { IconChevronLeft, IconLink } from "@/components/Icons";
 import { TargetActions } from "@/components/TargetActions";
 import { allowedUnitIds } from "@/lib/authz";
 import { prisma } from "@/lib/db";
-import { POST_FORMAT_LABELS, type PostFormat } from "@fsp/core";
+import { DEFAULT_MEDIA_RETENTION_DAYS, POST_FORMAT_LABELS, type PostFormat } from "@fsp/core";
+
+const RETENTION_MS = (Number(process.env.MEDIA_RETENTION_DAYS) || DEFAULT_MEDIA_RETENTION_DAYS) * 86_400_000;
 import { formatInTz, formatLocal } from "@/lib/format";
 import { requireSession } from "@/lib/session";
 
@@ -39,6 +41,9 @@ export default async function PostDetailPage({ params }: { params: Promise<{ id:
       </div>
       <div className="card stack">
         <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{post.caption || <span className="muted">(sem texto)</span>}</p>
+        {post.media.length === 0 && Date.now() - post.createdAt.getTime() > RETENTION_MS && (
+          <small className="muted">As mídias desta postagem foram removidas do servidor após o período de retenção.</small>
+        )}
         {post.media.length > 0 && (
           <div className="thumbs">
             {post.media.map((m, i) =>

@@ -6,6 +6,7 @@ import type { ExternalPostSummary } from "@fsp/connectors";
 import type { ImportAccount, ImportRepository } from "./imports.js";
 import type { MetricsRepository, MetricsTarget } from "./metrics.js";
 import type { ReconcileRepository } from "./reconcile.js";
+import type { CleanupRepository } from "./cleanup.js";
 import type { SegmentRef, SegmentRepository, SourceMedia } from "./segments.js";
 
 /** Implementação Prisma do repositório usado pelo processador. */
@@ -255,6 +256,31 @@ export function prismaSegmentRepository(prisma: PrismaClient): SegmentRepository
         },
       });
       return toRef(m);
+    },
+  };
+}
+
+/** Mídias expiradas: nada pendente as referencia (mídia da postagem, capa ou parte de vídeo). */
+export function prismaCleanupRepository(prisma: PrismaClient): CleanupRepository {
+  const pendingStatuses: Array<"SCHEDULED" | "PUBLISHING"> = ["SCHEDULED", "PUBLISHING"];
+  const pending = { status: { in: pendingStatuses } };
+  const notPendingPost = { targets: { none: pending } };
+  return {
+    async listExpired(before, limit) {
+      return prisma.mediaAsset.findMany({
+        where: {
+          createdAt: { lt: before },
+          posts: { every: { post: notPendingPost } },
+          coverOf: { every: notPendingPost },
+          OR: [{ parentId: null }, { parent: { posts: { every: { post: notPendingPost } } } }],
+        },
+        select: { id: true, storageKey: true, kind: true },
+        orderBy: { createdAt: "asc" },
+        take: limit,
+      });
+    },
+    async deleteMedia(id) {
+      await prisma.mediaAsset.delete({ where: { id } });
     },
   };
 }

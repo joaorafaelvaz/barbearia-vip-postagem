@@ -3,15 +3,16 @@ import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
 import { createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken, refreshTikTokToken, type ConnectorOptions } from "@fsp/connectors";
-import { IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData } from "@fsp/core";
+import { CLEANUP_JOB_NAME, DEFAULT_MEDIA_RETENTION_DAYS, IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
-import { createPublishQueue, createRedisConnection, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
+import { createPublishQueue, createRedisConnection, ensureCleanupScheduler, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
 import { Worker } from "bullmq";
+import { cleanupMedia } from "./cleanup.js";
 import { importPosts } from "./imports.js";
 import { collectMetrics } from "./metrics.js";
 import { reconcileTargets } from "./reconcile.js";
 import { processTarget, resolveAccessToken, type ProcessorDeps } from "./processor.js";
-import { prismaImportRepository, prismaMetricsRepository, prismaReconcileRepository, prismaSegmentRepository, prismaTargetRepository } from "./repository.js";
+import { prismaCleanupRepository, prismaImportRepository, prismaMetricsRepository, prismaReconcileRepository, prismaSegmentRepository, prismaTargetRepository } from "./repository.js";
 import { ensureNormalized, type NormalizeDeps } from "./normalize.js";
 import { ffmpegTranscoder, ffprobeProber } from "./normalize-ffmpeg.js";
 import { ensureStorySegments, ffmpegSplitter, type SegmentDeps } from "./segments.js";
@@ -79,6 +80,10 @@ async function main(): Promise<void> {
   const worker = new Worker<AppJobData>(
     PUBLISH_QUEUE_NAME,
     async (job) => {
+      if (job.name === CLEANUP_JOB_NAME) {
+        const retentionDays = Number(process.env.MEDIA_RETENTION_DAYS) || DEFAULT_MEDIA_RETENTION_DAYS;
+        return cleanupMedia({ repo: prismaCleanupRepository(prisma), storage, retentionDays, log });
+      }
       if (job.name === RECONCILE_JOB_NAME) {
         return reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
       }
@@ -138,6 +143,7 @@ async function main(): Promise<void> {
   await ensureMetricsScheduler(queue);
   await ensureImportScheduler(queue);
   await ensureReconcileScheduler(queue);
+  await ensureCleanupScheduler(queue);
   // Reconcilia já na subida: retoma o que ficou preso enquanto o worker esteve fora.
   await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
   console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, metricsScheduler: "6h", uploads: process.env.S3_BUCKET ? "s3" : uploadsDir() }));

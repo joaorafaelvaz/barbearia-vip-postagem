@@ -253,6 +253,15 @@ Migração passo a passo:
 
 O mesmo `backup.sh` serve para backups periódicos (cron), e o `restore.sh` para voltar no tempo.
 
+### Retenção de mídias
+
+O worker roda uma limpeza diária (job `cleanup-media`): fotos e vídeos com mais de
+`MEDIA_RETENTION_DAYS` dias (padrão 30) são apagados do armazenamento (disco ou S3) e do
+banco, desde que nenhuma postagem pendente (agendada ou publicando) os use, como mídia, capa
+de Reel ou vídeo de origem de partes de Story. A postagem continua no painel e no Analytics
+com texto, status e métricas; só as miniaturas somem. Mídias enviadas e nunca usadas seguem a
+mesma regra. O log do worker registra `cleanup done` com a contagem.
+
 ### Mídia em produção
 
 Sem S3 configurado, as mídias ficam em `/opt/postagem/data/uploads` (volume do compose) e o

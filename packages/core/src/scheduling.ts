@@ -73,3 +73,12 @@ export const PREPARE_MEDIA_JOB_NAME = "prepare-media";
 export interface PrepareMediaJobData {
   mediaId: string;
 }
+
+/**
+ * Limpeza de mídias: apaga do armazenamento (e do banco) fotos e vídeos com mais de
+ * MEDIA_RETENTION_DAYS cujas postagens já saíram. Roda uma vez por dia.
+ */
+export const CLEANUP_JOB_NAME = "cleanup-media";
+export const CLEANUP_SCHEDULER_ID = "cleanup-media-daily";
+export const CLEANUP_EVERY_MS = 24 * 60 * 60_000;
+export const DEFAULT_MEDIA_RETENTION_DAYS = 30;

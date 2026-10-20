@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface StoredFile {
@@ -11,6 +11,8 @@ export interface Storage {
   put(key: string, body: Buffer, contentType: string): Promise<StoredFile>;
   /** Caminho local do arquivo, quando o armazenamento é em disco (evita baixar pela URL). */
   localPath?(key: string): string;
+  /** Apaga o arquivo; não falha se já não existir. */
+  remove(key: string): Promise<void>;
 }
 
 const appUrl = (): string => (process.env.AUTH_URL ?? "http://localhost:3022").replace(/\/$/, "");
@@ -37,12 +39,15 @@ export function localStorage(root = uploadsDir()): Storage {
       return { storageKey: key, publicUrl: `${appUrl()}/uploads/${key}` };
     },
     localPath: (key) => path.join(root, key),
+    async remove(key) {
+      await rm(path.join(root, key), { force: true });
+    },
   };
 }
 
 /** S3 compatível, espelho do web (apps/web/src/lib/services/media.ts). */
 export async function s3Storage(): Promise<Storage> {
-  const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
+  const { S3Client, PutObjectCommand, DeleteObjectCommand } = await import("@aws-sdk/client-s3");
   const bucket = process.env.S3_BUCKET;
   const publicBase = process.env.S3_PUBLIC_BASE_URL;
   if (!bucket || !publicBase) throw new Error("S3_BUCKET e S3_PUBLIC_BASE_URL são obrigatórios para S3.");
@@ -59,6 +64,9 @@ export async function s3Storage(): Promise<Storage> {
     async put(key, body, contentType) {
       await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
       return { storageKey: key, publicUrl: `${publicBase.replace(/\/$/, "")}/${key}` };
+    },
+    async remove(key) {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
     },
   };
 }

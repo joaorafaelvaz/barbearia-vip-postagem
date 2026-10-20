@@ -1,10 +1,10 @@
-import { RECONCILE_EVERY_MS, RECONCILE_JOB_NAME, RECONCILE_SCHEDULER_ID, IMPORT_EVERY_MS, IMPORT_JOB_NAME, IMPORT_SCHEDULER_ID, METRICS_EVERY_MS, METRICS_JOB_NAME, METRICS_SCHEDULER_ID, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, delayUntil, publishJobId, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData } from "@fsp/core";
+import { CLEANUP_EVERY_MS, CLEANUP_JOB_NAME, CLEANUP_SCHEDULER_ID, RECONCILE_EVERY_MS, RECONCILE_JOB_NAME, RECONCILE_SCHEDULER_ID, IMPORT_EVERY_MS, IMPORT_JOB_NAME, IMPORT_SCHEDULER_ID, METRICS_EVERY_MS, METRICS_JOB_NAME, METRICS_SCHEDULER_ID, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, delayUntil, publishJobId, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData } from "@fsp/core";
 import { Queue, type JobsOptions } from "bullmq";
 import { Redis } from "ioredis";
 
 export { PUBLISH_QUEUE_NAME } from "@fsp/core";
 export type { PublishJobData, MetricsJobData, ImportJobData, PrepareMediaJobData } from "@fsp/core";
-export { METRICS_JOB_NAME, IMPORT_JOB_NAME, RECONCILE_JOB_NAME, PREPARE_MEDIA_JOB_NAME } from "@fsp/core";
+export { METRICS_JOB_NAME, IMPORT_JOB_NAME, RECONCILE_JOB_NAME, PREPARE_MEDIA_JOB_NAME, CLEANUP_JOB_NAME } from "@fsp/core";
 
 export function createRedisConnection(url: string = process.env.REDIS_URL ?? "redis://localhost:6379"): Redis {
   return new Redis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
@@ -101,4 +101,9 @@ export async function hasPublishJob(queue: PublishQueueLike, postTargetId: strin
 /** Corte antecipado de um vídeo longo para Stories. jobId fixo: um corte por mídia, sem duplicar. */
 export async function enqueuePrepareMedia(queue: PublishQueueLike, mediaId: string): Promise<void> {
   await queue.add(PREPARE_MEDIA_JOB_NAME, { mediaId } as never, { jobId: `prepare-${mediaId}`, attempts: 1, removeOnComplete: true, removeOnFail: true });
+}
+
+/** Garante a limpeza diária de mídias antigas (idempotente). */
+export async function ensureCleanupScheduler(queue: Queue<AppJobData>): Promise<void> {
+  await queue.upsertJobScheduler(CLEANUP_SCHEDULER_ID, { every: CLEANUP_EVERY_MS }, { name: CLEANUP_JOB_NAME, data: {} });
 }
