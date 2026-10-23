@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { canTransition, noticeJobId, normalizeUnitName, resolveNoticeTargets, sameRecurrence } from "../whatsapp-notices.js";
+import { localToUtc } from "../timezone.js";
+import { canTransition, nextOccurrence, noticeJobId, normalizeUnitName, resolveNoticeTargets, sameRecurrence } from "../whatsapp-notices.js";
+
+/** Horário de parede em São Paulo -> Date UTC (mesmo `dt()` dos testes do daily). */
+const sp = (local: string) => localToUtc(local, "America/Sao_Paulo");
 
 describe("sameRecurrence", () => {
   it("compara tipo, dias (ordenados) e dia, ignorando ordem de chaves e de dias (jsonb reordena)", () => {
@@ -57,5 +61,34 @@ describe("noticeJobId / canTransition", () => {
     expect(canTransition("cancelado", "ativo")).toBe(false);
     expect(canTransition("enviando", "pausado")).toBe(false);
     expect(canTransition("concluido", "cancelado")).toBe(false);
+  });
+});
+
+describe("nextOccurrence (portado de daily tests/test_agendamentos.py)", () => {
+  it("única", () => {
+    expect(nextOccurrence(null, sp("2026-10-25T15:00"), { tipo: "nenhuma" }, null)).toEqual(sp("2026-10-25T15:00"));
+    expect(nextOccurrence(sp("2026-10-25T15:00"), sp("2026-10-25T15:00"), { tipo: "nenhuma" }, null)).toBeNull();
+  });
+  it("diária mantém horário", () => {
+    expect(nextOccurrence(sp("2026-10-25T15:00"), sp("2026-10-25T15:00"), { tipo: "diaria" }, null)).toEqual(sp("2026-10-26T15:00"));
+    expect(nextOccurrence(null, sp("2026-10-25T15:00"), { tipo: "diaria" }, null)).toEqual(sp("2026-10-25T15:00"));
+  });
+  it("semanal vários dias (0=segunda)", () => {
+    const rec = { tipo: "semanal" as const, dias: [0, 4] }; // seg e sex
+    expect(nextOccurrence(null, sp("2026-10-21T09:00"), rec, null)).toEqual(sp("2026-10-23T09:00")); // 21/10 é quarta -> sexta 23
+    expect(nextOccurrence(sp("2026-10-23T09:00"), sp("2026-10-21T09:00"), rec, null)).toEqual(sp("2026-10-26T09:00")); // -> segunda 26
+  });
+  it("mensal dia 31 e 'ultimo'", () => {
+    expect(nextOccurrence(sp("2026-10-31T08:00"), sp("2026-10-31T08:00"), { tipo: "mensal", dia: 31 }, null)).toEqual(sp("2026-11-30T08:00"));
+    expect(nextOccurrence(null, sp("2026-02-10T08:00"), { tipo: "mensal", dia: "ultimo" }, null)).toEqual(sp("2026-02-28T08:00"));
+  });
+  it("fim encerra", () => {
+    expect(nextOccurrence(sp("2026-10-25T15:00"), sp("2026-10-25T15:00"), { tipo: "diaria" }, sp("2026-10-25T23:59"))).toBeNull();
+  });
+  it("after anterior ao primeiro envio volta ao primeiro", () => {
+    expect(nextOccurrence(sp("2026-10-01T10:00"), sp("2026-10-25T15:00"), { tipo: "diaria" }, null)).toEqual(sp("2026-10-25T15:00"));
+  });
+  it("diária com after no meio do dia, antes do horário, dispara no mesmo dia", () => {
+    expect(nextOccurrence(sp("2026-10-26T09:00"), sp("2026-10-25T15:00"), { tipo: "diaria" }, null)).toEqual(sp("2026-10-26T15:00"));
   });
 });
