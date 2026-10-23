@@ -19,7 +19,8 @@
     "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "test": "dotenv -e ../../.env -- prisma validate",
-    "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts"
+    "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "import:whatsapp-groups": "dotenv -e ../../.env -- tsx scripts/import-whatsapp-groups.ts"
   },
   "dependencies": {
     "@fsp/core": "workspace:*",
