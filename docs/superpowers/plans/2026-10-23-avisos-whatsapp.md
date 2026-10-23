@@ -165,7 +165,17 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { canTransition, noticeJobId, normalizeUnitName, resolveNoticeTargets } from "../whatsapp-notices.js";
+import { canTransition, noticeJobId, normalizeUnitName, resolveNoticeTargets, sameRecurrence } from "../whatsapp-notices.js";
+
+describe("sameRecurrence", () => {
+  it("compara tipo, dias (ordenados) e dia, ignorando ordem de chaves e de dias (jsonb reordena)", () => {
+    expect(sameRecurrence({ tipo: "semanal", dias: [4, 0] }, JSON.parse('{"dias":[0,4],"tipo":"semanal"}'))).toBe(true);
+    expect(sameRecurrence({ tipo: "mensal", dia: "ultimo" }, { tipo: "mensal", dia: "ultimo" })).toBe(true);
+    expect(sameRecurrence({ tipo: "mensal", dia: 31 }, { tipo: "mensal", dia: "ultimo" })).toBe(false);
+    expect(sameRecurrence({ tipo: "diaria" }, { tipo: "nenhuma" })).toBe(false);
+    expect(sameRecurrence({ tipo: "semanal", dias: [0] }, { tipo: "semanal", dias: [0, 1] })).toBe(false);
+  });
+});
 
 describe("normalizeUnitName", () => {
   it("ignora acentos, caixa e espaços repetidos", () => {
@@ -245,12 +255,15 @@ export const NOTICE_TEXT_MAX = 4000;
 export type NoticeState = "ativo" | "pausado" | "enviando" | "concluido" | "cancelado";
 export type DeliveryStatus = "enviado" | "falhou" | "perdido" | "pausado";
 
-/** Mesmas chaves do daily: ids de Unit (cuid) em vez de ids numéricos do ERP. */
-export interface NoticeTargets {
+/**
+ * Mesmas chaves do daily: ids de Unit (cuid) em vez de ids numéricos do ERP.
+ * `type` (não `interface`): só um alias de objeto é atribuível ao `Prisma.InputJsonValue` dos campos Json.
+ */
+export type NoticeTargets = {
   unidades: string[];
   todas: boolean;
   franqueadora: boolean;
-}
+};
 
 export type NoticeRecurrence =
   | { tipo: "nenhuma" }
@@ -275,6 +288,21 @@ export const NOTICE_TRANSITIONS: Record<"ativo" | "pausado" | "cancelado", Notic
 export function canTransition(from: NoticeState, to: NoticeState): boolean {
   const origins = (NOTICE_TRANSITIONS as Partial<Record<NoticeState, NoticeState[]>>)[to];
   return origins !== undefined && origins.includes(from);
+}
+
+/**
+ * Igualdade semântica de recorrência: tipo, `dias` ordenados, `dia`. Nunca compare o JSON
+ * serializado — o jsonb do Postgres reordena as chaves ao gravar.
+ */
+export function sameRecurrence(a: NoticeRecurrence, b: NoticeRecurrence): boolean {
+  if (a.tipo !== b.tipo) return false;
+  if (a.tipo === "semanal" && b.tipo === "semanal") {
+    const da = [...new Set(a.dias.map(Number))].sort((x, y) => x - y);
+    const db = [...new Set(b.dias.map(Number))].sort((x, y) => x - y);
+    return da.length === db.length && da.every((d, i) => d === db[i]);
+  }
+  if (a.tipo === "mensal" && b.tipo === "mensal") return String(a.dia) === String(b.dia);
+  return true;
 }
 
 /**
@@ -321,13 +349,29 @@ export function normalizeUnitName(name: string): string {
 
 Em `packages/core/src/index.ts` acrescente `export * from "./whatsapp-notices.js";`.
 
-- [ ] **Step 4: Rodar — deve passar** — `pnpm --filter @fsp/core test` → todos os testes do pacote verdes (os 3 `describe` novos).
+Em `packages/core/package.json`, bloco `exports`, acrescente um subpath (componentes client do Next **não podem** importar a raiz `@fsp/core`, que puxa `node:crypto` via `crypto.ts`; `./timezone` já existe pelo mesmo motivo):
+
+```diff
+     "./timezone": {
+       "types": "./dist/timezone.d.ts",
+       "import": "./dist/timezone.js"
++    },
++    "./whatsapp-notices": {
++      "types": "./dist/whatsapp-notices.d.ts",
++      "import": "./dist/whatsapp-notices.js"
+     }
+   },
+```
+
+(`whatsapp-notices.ts` importa só `./timezone.js`, então o subpath é seguro no browser.)
+
+- [ ] **Step 4: Rodar — deve passar** — `pnpm --filter @fsp/core test` → todos os testes do pacote verdes (os 4 `describe` novos).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/core/src/whatsapp-notices.ts packages/core/src/__tests__/whatsapp-notices.test.ts packages/core/src/index.ts
-git commit -m "feat(core): tipos, constantes, destinos e transições dos Avisos WhatsApp
+git add packages/core/src/whatsapp-notices.ts packages/core/src/__tests__/whatsapp-notices.test.ts packages/core/src/index.ts packages/core/package.json
+git commit -m "feat(core): tipos, constantes, destinos, transições e sameRecurrence dos Avisos WhatsApp
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -468,6 +512,9 @@ function firstValid(day: CivilDate, time: string, rec: Exclude<NoticeRecurrence,
 
 - [ ] **Step 4: Rodar — deve passar** — `pnpm --filter @fsp/core test` → `7` testes novos verdes. Os testes são a especificação: se um falhar, corrija a função, não o teste.
 
+- [ ] **Step 4b: Compilar o core** — Run: `pnpm --filter @fsp/core build`
+Expected: `dist/whatsapp-notices.js` e `dist/whatsapp-notices.d.ts` gerados. Necessário antes da Task 4 (o script de importação carrega `@fsp/core` compilado) e de qualquer `typecheck` de `apps/*`.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -517,7 +564,11 @@ async function main() {
   const matched: string[] = [], skipped: string[] = [], unmatched: string[] = [];
   const used = new Set<string>();
   for (const [erpId, du] of Object.entries(daily.units)) {
-    const chat = du.chat_id ?? du.chat_ids?.[0];
+    // O Publicador guarda UM chat por unidade (decisão: todos os mapeamentos atuais são únicos).
+    // O daily aceita chat_id + chat_ids (lista): se houver mais de um, usa o primeiro e AVISA.
+    const chats = [du.chat_id, ...(du.chat_ids ?? [])].filter((c): c is string => Boolean(c));
+    const chat = chats[0];
+    if (chats.length > 1) console.warn(`AVISO: #${erpId} ${du.nome} tem ${chats.length} chats no daily (${chats.join(", ")}); só o primeiro é importado.`);
     const unit = byKey.get(normalizeUnitName(du.nome));
     if (!unit || !chat) { unmatched.push(`#${erpId} ${du.nome}${chat ? "" : " (sem chat_id)"}`); continue; }
     used.add(unit.id);
@@ -823,11 +874,13 @@ function fakeRepo(over: Partial<NoticeRecord> = {}, chats: Record<string, string
     firstSendAt: T0, recurrence: { tipo: "diaria" }, endAt: null, nextRunAt: T0, state: "ativo", consecutiveFailures: 0, sendingStartedAt: null, ...over,
   };
   const rows = new Map<string, Row>(); // key = occurrence|chatId
+  let clock = () => new Date(); // relógio do "banco" (sendingStartedAt/updatedAt); setClock() congela
+  let updatedAt = new Date(0);
   const repo: NoticeRepository = {
     async loadNotice(id) { return id === notice.id ? { ...notice } : null; },
     async claim(id, occ) {
       if (id !== notice.id || notice.state !== "ativo" || notice.nextRunAt?.getTime() !== occ.getTime()) return false;
-      notice.state = "enviando"; return true;
+      notice.state = "enviando"; notice.sendingStartedAt = clock(); updatedAt = clock(); return true;
     },
     async listUnitChats() { return Object.entries(chats).map(([id, chat]) => ({ id, name: id, whatsappChatId: chat })); },
     async franchisorChatId() { return "f@g.us"; },
@@ -835,19 +888,21 @@ function fakeRepo(over: Partial<NoticeRecord> = {}, chats: Record<string, string
     async recordDelivery(d) { rows.set(`${d.occurrenceAt.toISOString()}|${d.chatId}`, { status: d.status, chatId: d.chatId, name: d.targetName, error: d.error }); },
     async finishCycle(id, patch) {
       if (id !== notice.id || notice.state !== "enviando") return false;
-      Object.assign(notice, patch, { sendingStartedAt: null }); return true;
+      Object.assign(notice, patch, { sendingStartedAt: null }); updatedAt = clock(); return true;
     },
-    async listStaleSending() { return []; },
-    async releaseStale() {},
-    async listActive() { return notice.state === "ativo" && notice.nextRunAt ? [{ id: notice.id, nextRunAt: notice.nextRunAt, consecutiveFailures: notice.consecutiveFailures }] : []; },
+    async touchSending(id) { if (id === notice.id && notice.state === "enviando") notice.sendingStartedAt = clock(); },
+    async listStaleSending(before) { return notice.state === "enviando" && (notice.sendingStartedAt === null || notice.sendingStartedAt.getTime() < before.getTime()) ? [{ id: notice.id }] : []; },
+    async releaseStale(id) { if (id === notice.id && notice.state === "enviando") { notice.state = "ativo"; notice.sendingStartedAt = null; } },
+    async listActive(updatedBefore) { return notice.state === "ativo" && notice.nextRunAt && updatedAt.getTime() < updatedBefore.getTime() ? [{ id: notice.id, nextRunAt: notice.nextRunAt, consecutiveFailures: notice.consecutiveFailures }] : []; },
   };
-  return { repo, notice, rows: () => [...rows.values()] };
+  return { repo, notice, rows: () => [...rows.values()], setClock: (d: Date) => { clock = () => d; } };
 }
 
-type Deps = NoticeDeps & { sent: string[] };
+type Deps = NoticeDeps & { sent: string[]; sleeps: number[] };
 function deps(repo: NoticeRepository, queue: PublishQueueLike, send: (chat: string) => boolean, now: Date): Deps {
   const sent: string[] = [];
-  return { repo, queue, sender: { async sendText(chat) { sent.push(chat); return send(chat); } }, now: () => now, sleep: async () => {}, sent };
+  const sleeps: number[] = [];
+  return { repo, queue, sender: { async sendText(chat) { sent.push(chat); return send(chat); } }, now: () => now, sleep: async (ms) => { sleeps.push(ms); }, sent, sleeps };
 }
 
 describe("processNotice", () => {
@@ -933,6 +988,41 @@ describe("processNotice", () => {
     await processNotice(d, { noticeId: "n1", occurrenceAt: T0.toISOString() });
     expect(d.sent).toEqual(["f@g.us"]);
   });
+
+  it("pausa de 1,5 s só ENTRE envios (2 destinos -> 1 sleep)", async () => {
+    const { repo } = fakeRepo();
+    const d = deps(repo, fakeQueue().queue, () => true, min(1));
+    await processNotice(d, { noticeId: "n1", occurrenceAt: T0.toISOString() });
+    expect(d.sleeps).toEqual([1500]);
+    const one = fakeRepo({ targets: { unidades: ["u61"], todas: false, franqueadora: false } });
+    const d1 = deps(one.repo, fakeQueue().queue, () => true, min(1));
+    await processNotice(d1, { noticeId: "n1", occurrenceAt: T0.toISOString() });
+    expect(d1.sleeps).toEqual([]);
+  });
+
+  it("heartbeat: um ciclo ainda enviando não é solto pela reconciliação", async () => {
+    const { repo, notice, setClock } = fakeRepo({ state: "enviando", sendingStartedAt: min(-15) }); // reservado há 15 min (preso?)
+    setClock(min(0));
+    await repo.touchSending("n1"); // ...mas acabou de gravar um envio: heartbeat renova a reserva
+    const out = await reconcileNotices({ repo, queue: fakeQueue().queue, now: () => min(0) });
+    expect(out.staleReleased).toBe(0);
+    expect(notice.state).toBe("enviando");
+    const stuck = fakeRepo({ state: "enviando", sendingStartedAt: min(-15) }); // sem heartbeat: solto
+    expect((await reconcileNotices({ repo: stuck.repo, queue: fakeQueue().queue, now: () => min(0) })).staleReleased).toBe(1);
+    expect(stuck.notice.state).toBe("ativo");
+  });
+
+  it("carência: a reconciliação não atropela uma retentativa recém-enfileirada", async () => {
+    const { repo, setClock } = fakeRepo({ targets: { unidades: ["u61"], todas: false, franqueadora: false } });
+    setClock(min(1));
+    const { queue, jobs } = fakeQueue();
+    await processNotice(deps(repo, queue, () => false, min(1)), { noticeId: "n1", occurrenceAt: T0.toISOString() }); // falha -> retentativa id 1 (+60 s)
+    expect([...jobs.keys()]).toEqual([`whatsapp-notice-n1-${T0.getTime()}-1`]);
+    jobs.clear(); // simula Redis sem o job (pior caso)
+    expect((await reconcileNotices({ repo, queue, now: () => min(2) })).requeued).toBe(0); // updatedAt há 1 min < OVERDUE_GRACE_MS (2 min)
+    expect((await reconcileNotices({ repo, queue, now: () => min(4) })).requeued).toBe(1); // passou a carência: reenfileira com a tentativa atual
+    expect([...jobs.keys()]).toEqual([`whatsapp-notice-n1-${T0.getTime()}-1`]);
+  });
 });
 
 describe("reconcileNotices", () => {
@@ -942,7 +1032,10 @@ describe("reconcileNotices", () => {
       ...fakeRepo().repo,
       async listStaleSending() { return [{ id: "stuck" }]; },
       async releaseStale(id) { released.push(id); },
-      async listActive() { return [{ id: "stuck", nextRunAt: T0, consecutiveFailures: 0 }, { id: "lost", nextRunAt: min(-30), consecutiveFailures: 1 }, { id: "has", nextRunAt: min(60), consecutiveFailures: 0 }, { id: "future", nextRunAt: min(120), consecutiveFailures: 0 }]; },
+      async listActive(updatedBefore) {
+        expect(updatedBefore).toEqual(min(3)); // agora (min 5) - OVERDUE_GRACE_MS (2 min)
+        return [{ id: "stuck", nextRunAt: T0, consecutiveFailures: 0 }, { id: "lost", nextRunAt: min(-30), consecutiveFailures: 1 }, { id: "has", nextRunAt: min(60), consecutiveFailures: 0 }, { id: "future", nextRunAt: min(120), consecutiveFailures: 0 }];
+      },
     };
     const { queue, jobs } = fakeQueue();
     jobs.set(`whatsapp-notice-has-${min(60).getTime()}-0`, { data: {}, delay: 0 });
@@ -962,7 +1055,7 @@ describe("reconcileNotices", () => {
 
 ```ts
 import {
-  NOTICE_MAX_DELAY_MS, NOTICE_MAX_FAILURES, NOTICE_RETRY_DELAY_MS, NOTICE_SEND_INTERVAL_MS, NOTICE_STALE_SENDING_MS,
+  NOTICE_MAX_DELAY_MS, NOTICE_MAX_FAILURES, NOTICE_RETRY_DELAY_MS, NOTICE_SEND_INTERVAL_MS, NOTICE_STALE_SENDING_MS, OVERDUE_GRACE_MS,
   nextOccurrence, resolveNoticeTargets,
   type DeliveryStatus, type NoticeRecurrence, type NoticeState, type NoticeTargets, type NoticeUnitChat, type WhatsappNoticeJobData,
 } from "@fsp/core";
@@ -1006,9 +1099,12 @@ export interface NoticeRepository {
   recordDelivery(d: DeliveryInput): Promise<void>;
   /** Fecha o ciclo só se ainda está `enviando`. */
   finishCycle(id: string, patch: { state: NoticeState; nextRunAt: Date | null; consecutiveFailures: number }): Promise<boolean>;
+  /** Heartbeat: renova `sendingStartedAt` enquanto o ciclo grava envios (só se ainda `enviando`). */
+  touchSending(id: string): Promise<void>;
   listStaleSending(before: Date): Promise<Array<{ id: string }>>;
   releaseStale(id: string): Promise<void>;
-  listActive(): Promise<Array<{ id: string; nextRunAt: Date; consecutiveFailures: number }>>;
+  /** `ativo` com nextRunAt e `updatedAt < updatedBefore` (carência: não atropela um job recém-enfileirado). */
+  listActive(updatedBefore: Date): Promise<Array<{ id: string; nextRunAt: Date; consecutiveFailures: number }>>;
 }
 
 export interface NoticeDeps {
@@ -1077,7 +1173,8 @@ export async function processNotice(deps: NoticeDeps, data: WhatsappNoticeJobDat
       return { outcome: "missed" };
     }
     // Sem destinos: não vai se resolver sozinho; pausa já, com motivo (uma única linha de sistema por causa do UNIQUE)
-    if (targets.length === 0) return fail(NO_TARGETS, true);
+    // `return await`: uma rejeição de fail() dentro do try precisa cair no catch abaixo.
+    if (targets.length === 0) return await fail(NO_TARGETS, true);
 
     // 3. Envia a quem ainda não recebeu esta ocorrência
     const already = await deps.repo.sentChatIds(notice.id, occurrenceAt);
@@ -1090,16 +1187,23 @@ export async function processNotice(deps: NoticeDeps, data: WhatsappNoticeJobDat
       sentNow++;
       await deps.repo.recordDelivery({ noticeId: notice.id, organizationId: notice.organizationId, occurrenceAt, chatId: t.chatId, targetName: t.name, status: ok ? "enviado" : "falhou", error: ok ? undefined : deps.sender ? "WAHA retornou falha" : "WAHA_URL não configurada" });
       if (ok) { sent++; anyOk = true; } else failed++;
+      await deps.repo.touchSending(notice.id); // heartbeat: 30 destinos x 1,5 s + 2 tentativas do WAHA passam de 10 min
     }
 
     // 4./5. >=1 enviado avança; todos falharam -> falha do ciclo sem avançar
-    if (!anyOk) return fail("todos os destinos falharam");
+    if (!anyOk) return await fail("todos os destinos falharam");
     const state = await advance();
     log("notice sent", { ...meta, sent, failed, state });
     return { outcome: "sent", sent, failed };
   } catch (err) {
     log("notice error", { ...meta, error: err instanceof Error ? err.message : String(err) });
-    return fail("exceção no envio");
+    try {
+      return await fail("exceção no envio");
+    } catch (err2) {
+      // Não deixa uma linha ruim derrubar o job; a reconciliação solta o `enviando` em 10 min
+      log("notice error", { ...meta, error: `falha ao fechar o ciclo: ${err2 instanceof Error ? err2.message : String(err2)}` });
+      return { outcome: "skipped", reason: "falha ao fechar o ciclo" };
+    }
   }
 }
 
@@ -1117,7 +1221,9 @@ export async function reconcileNotices(deps: { repo: NoticeRepository; queue: Pu
     await deps.repo.releaseStale(n.id);
     summary.staleReleased++;
   }
-  for (const n of await deps.repo.listActive()) {
+  // Carência de OVERDUE_GRACE_MS (2 min, a mesma das publicações): um aviso que acabou de ser criado,
+  // editado ou retentado (fail() enfileira +60 s) ainda pode estar sendo enfileirado pelo web/worker.
+  for (const n of await deps.repo.listActive(new Date(now().getTime() - OVERDUE_GRACE_MS))) {
     if (await hasNoticeJob(deps.queue, n.id, n.nextRunAt, n.consecutiveFailures)) continue;
     const runAt = n.nextRunAt.getTime() > now().getTime() ? n.nextRunAt : now();
     await enqueueNotice(deps.queue, n.id, n.nextRunAt, n.consecutiveFailures, now(), runAt);
@@ -1128,7 +1234,7 @@ export async function reconcileNotices(deps: { repo: NoticeRepository; queue: Pu
 }
 ```
 
-- [ ] **Step 4: Rodar — deve passar** — `pnpm -r --filter "./packages/*" build && pnpm --filter @fsp/worker test -- whatsapp-notices` → `9 passed`. Os testes são a especificação (vêm do daily); corrija a função, não o teste.
+- [ ] **Step 4: Rodar — deve passar** — `pnpm -r --filter "./packages/*" build && pnpm --filter @fsp/worker test -- whatsapp-notices` → `12 passed` (11 de `processNotice`, incluindo sleep só entre envios, heartbeat e carência; 1 de `reconcileNotices`). Os testes são a especificação (vêm do daily); corrija a função, não o teste.
 
 - [ ] **Step 5: Commit**
 
@@ -1184,11 +1290,14 @@ export function prismaNoticeRepository(prisma: PrismaClient): NoticeRepository {
     async listStaleSending(before) {
       return prisma.whatsappNotice.findMany({ where: { state: "enviando", OR: [{ sendingStartedAt: null }, { sendingStartedAt: { lt: before } }] }, select: { id: true }, take: 500 });
     },
+    async touchSending(id) {
+      await prisma.whatsappNotice.updateMany({ where: { id, state: "enviando" }, data: { sendingStartedAt: new Date() } });
+    },
     async releaseStale(id) {
       await prisma.whatsappNotice.updateMany({ where: { id, state: "enviando" }, data: { state: "ativo", sendingStartedAt: null } });
     },
-    async listActive() {
-      const rows = await prisma.whatsappNotice.findMany({ where: { state: "ativo", nextRunAt: { not: null } }, select: { id: true, nextRunAt: true, consecutiveFailures: true }, orderBy: { nextRunAt: "asc" }, take: 2000 });
+    async listActive(updatedBefore) {
+      const rows = await prisma.whatsappNotice.findMany({ where: { state: "ativo", nextRunAt: { not: null }, updatedAt: { lt: updatedBefore } }, select: { id: true, nextRunAt: true, consecutiveFailures: true }, orderBy: { nextRunAt: "asc" }, take: 2000 });
       return rows.map((r) => ({ id: r.id, nextRunAt: r.nextRunAt as Date, consecutiveFailures: r.consecutiveFailures }));
     },
   };
@@ -1209,14 +1318,24 @@ No corpo do `Worker`, o ramo do reconcile passa a tratar os dois domínios, e en
       if (job.name === RECONCILE_JOB_NAME) {
         const targets = await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
         const notices = await reconcileNotices({ repo: noticeRepo, queue, log: deps.log });
-        return { ...targets, ...notices };
+        return { targets, notices };
       }
       if (job.name === WHATSAPP_NOTICE_JOB_NAME) {
         return processNotice({ repo: noticeRepo, queue, sender: waha, log: deps.log }, job.data as WhatsappNoticeJobData);
       }
 ```
 
-E na subida, logo após `await reconcileTargets(...)`: `await reconcileNotices({ repo: noticeRepo, queue, log: deps.log });`.
+Na subida, substitua a linha `await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });` por um bloco tolerante (uma falha de reconciliação — banco ainda subindo, migration atrasada — não pode derrubar o worker; o scheduler de 5 min repete):
+
+```ts
+  // Reconcilia já na subida: retoma o que ficou preso enquanto o worker esteve fora.
+  try {
+    await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
+    await reconcileNotices({ repo: noticeRepo, queue, log: deps.log });
+  } catch (err) {
+    log("startup reconcile failed", { error: err instanceof Error ? err.message : String(err) });
+  }
+```
 
 - [ ] **Step 3: Verificar** — `pnpm --filter @fsp/worker typecheck && pnpm --filter @fsp/worker test` → sem erros; suíte do worker verde. Subida local: `pnpm --filter @fsp/worker dev` → log `worker started`; sem `WAHA_URL` no `.env`, aparece `waha disabled`.
 
@@ -1242,7 +1361,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```ts
 import { localToUtc } from "@fsp/core";
 import { describe, expect, it } from "vitest";
-import { parseNoticeInput, planUpdate, CHAT_ID_RE } from "./whatsapp-notices";
+import { assertResolvableTargets, parseNoticeInput, planUpdate, CHAT_ID_RE } from "./whatsapp-notices";
 
 const sp = (l: string) => localToUtc(l, "America/Sao_Paulo");
 const now = sp("2026-10-23T10:00");
@@ -1289,9 +1408,27 @@ describe("planUpdate (regras de edição do daily)", () => {
     const p = planUpdate({ ...current, state: "ativo" }, { firstSendAt: current.firstSendAt, recurrence: { tipo: "nenhuma" }, endAt: sp("2026-10-02T00:00") }, now);
     expect(p).toEqual({ state: "concluido", nextRunAt: null });
   });
+  it("recorrência vinda do jsonb (chaves/dias em outra ordem) conta como a mesma regra", () => {
+    const stale = { ...current, state: "ativo" as const, recurrence: JSON.parse('{"dias":[4,0],"tipo":"semanal"}') as never, nextRunAt: sp("2026-10-23T09:00") };
+    expect(planUpdate(stale, { firstSendAt: stale.firstSendAt, recurrence: { tipo: "semanal", dias: [0, 4] }, endAt: null }, now)).toEqual({ state: "ativo", nextRunAt: sp("2026-10-23T09:00") });
+  });
   it("enviando -> 409; concluido/cancelado -> 404", () => {
     expect(() => planUpdate({ ...current, state: "enviando" }, { firstSendAt: current.firstSendAt, recurrence: current.recurrence, endAt: null }, now)).toThrow(expect.objectContaining({ status: 409 }));
     expect(() => planUpdate({ ...current, state: "cancelado" }, { firstSendAt: current.firstSendAt, recurrence: current.recurrence, endAt: null }, now)).toThrow(expect.objectContaining({ status: 404 }));
+  });
+});
+
+describe("assertResolvableTargets (como _parse_form do daily: >= 1 destino RESOLVIDO)", () => {
+  const units = [{ id: "u1", name: "A", whatsappChatId: "a@g.us" }, { id: "u2", name: "B", whatsappChatId: null }];
+  it("passa com unidade com grupo, com todas, ou com franqueadora cadastrada", () => {
+    expect(() => assertResolvableTargets({ unidades: ["u1"], todas: false, franqueadora: false }, units, null)).not.toThrow();
+    expect(() => assertResolvableTargets({ unidades: [], todas: true, franqueadora: false }, units, null)).not.toThrow();
+    expect(() => assertResolvableTargets({ unidades: [], todas: false, franqueadora: true }, units, "f@g.us")).not.toThrow();
+  });
+  it("400 quando nada resolve: unidade sem grupo, franqueadora sem grupo, todas sem nenhuma unidade com grupo", () => {
+    expect(() => assertResolvableTargets({ unidades: ["u2"], todas: false, franqueadora: false }, units, null)).toThrow(/destino/i);
+    expect(() => assertResolvableTargets({ unidades: [], todas: false, franqueadora: true }, units, null)).toThrow(/destino/i);
+    expect(() => assertResolvableTargets({ unidades: [], todas: true, franqueadora: false }, [units[1]!], null)).toThrow(expect.objectContaining({ status: 400 }));
   });
 });
 
@@ -1310,8 +1447,8 @@ describe("CHAT_ID_RE", () => {
 - [ ] **Step 3: Implementar (parte pura)** — `apps/web/src/lib/services/whatsapp-notices.ts`:
 
 ```ts
-import { NOTICE_TEXT_MAX, NOTICE_TIMEZONE, canTransition, localToUtc, nextOccurrence, type NoticeRecurrence, type NoticeState, type NoticeTargets } from "@fsp/core";
-import type { PrismaClient } from "@fsp/db";
+import { NOTICE_TEXT_MAX, NOTICE_TIMEZONE, canTransition, localToUtc, nextOccurrence, resolveNoticeTargets, sameRecurrence, type NoticeRecurrence, type NoticeState, type NoticeTargets, type NoticeUnitChat } from "@fsp/core";
+import type { Prisma, PrismaClient } from "@fsp/db";
 import { dequeueNotice, enqueueNotice, type PublishQueueLike } from "@fsp/queue";
 import { z } from "zod";
 import { HttpError } from "../api";
@@ -1383,7 +1520,8 @@ interface CurrentNotice { state: NoticeState; firstSendAt: Date; recurrence: Not
 export function planUpdate(current: CurrentNotice, next: Pick<ParsedNotice, "firstSendAt" | "recurrence" | "endAt">, now: Date = new Date()): { state: NoticeState; nextRunAt: Date | null } {
   if (current.state === "enviando") throw new HttpError(409, "Este aviso está sendo enviado agora; aguarde e tente de novo.");
   if (current.state !== "ativo" && current.state !== "pausado") throw new HttpError(404, "Aviso não encontrado.");
-  const sameRule = current.firstSendAt.getTime() === next.firstSendAt.getTime() && JSON.stringify(current.recurrence) === JSON.stringify(next.recurrence);
+  // sameRecurrence, nunca JSON.stringify: o jsonb do Postgres devolve as chaves em outra ordem
+  const sameRule = current.firstSendAt.getTime() === next.firstSendAt.getTime() && sameRecurrence(current.recurrence, next.recurrence);
   let nextRunAt: Date | null;
   if (current.nextRunAt && current.nextRunAt.getTime() <= now.getTime() && sameRule) {
     nextRunAt = next.endAt === null || current.nextRunAt.getTime() <= next.endAt.getTime() ? current.nextRunAt : null;
@@ -1392,9 +1530,17 @@ export function planUpdate(current: CurrentNotice, next: Pick<ParsedNotice, "fir
   }
   return { state: nextRunAt ? current.state : "concluido", nextRunAt };
 }
+
+/**
+ * Como `_parse_form` do daily: o destino precisa RESOLVER em ao menos um chat (unidade com
+ * grupo cadastrado ou franqueadora com grupo). Marcar "todas" com nenhuma unidade com chat é erro.
+ */
+export function assertResolvableTargets(targets: NoticeTargets, units: readonly NoticeUnitChat[], franchisorChatId: string | null): void {
+  if (resolveNoticeTargets(targets, units, franchisorChatId).length === 0) throw new HttpError(400, "Escolha ao menos um destino.");
+}
 ```
 
-- [ ] **Step 4: Rodar — deve passar** — `pnpm --filter @fsp/web test -- whatsapp-notices` → 11 testes verdes.
+- [ ] **Step 4: Rodar — deve passar** — `pnpm --filter @fsp/web test -- whatsapp-notices` → 13 testes verdes (4 `parseNoticeInput`, 6 `planUpdate`, 2 `assertResolvableTargets`, 1 `CHAT_ID_RE`).
 
 - [ ] **Step 5: Commit**
 
@@ -1430,12 +1576,26 @@ export async function listDeliveries(prisma: PrismaClient, organizationId: strin
   return prisma.whatsappDelivery.findMany({ where: { organizationId }, orderBy: { sentAt: "desc" }, take: limit, select: { id: true, occurrenceAt: true, sentAt: true, chatId: true, targetName: true, status: true, error: true, notice: { select: { id: true, text: true } } } });
 }
 
+/** Os chats de hoje (unidades + franqueadora) para validar que o destino resolve em >= 1 chat. */
+async function loadChats(prisma: PrismaClient, organizationId: string) {
+  const [units, org] = await Promise.all([
+    prisma.unit.findMany({ where: { organizationId }, select: { id: true, name: true, whatsappChatId: true } }),
+    prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { whatsappChatId: true } }),
+  ]);
+  return { units, franchisorChatId: org.whatsappChatId };
+}
+
+/** Campos Json do Prisma: `NoticeTargets`/`NoticeRecurrence` são aliases de objeto, atribuíveis a `InputJsonValue`. */
+const json = (v: NoticeTargets | NoticeRecurrence) => v as unknown as Prisma.InputJsonObject;
+
 export async function createNotice(deps: NoticeDeps, organizationId: string, userId: string, raw: unknown) {
   const input = parseNoticeInput(raw);
   await assertUnitsInOrg(deps.prisma, organizationId, input.targets.unidades);
+  const chats = await loadChats(deps.prisma, organizationId);
+  assertResolvableTargets(input.targets, chats.units, chats.franchisorChatId);
   const nextRunAt = nextOccurrence(null, input.firstSendAt, input.recurrence, input.endAt);
   const notice = await deps.prisma.whatsappNotice.create({
-    data: { organizationId, text: input.text, targets: input.targets, firstSendAt: input.firstSendAt, recurrence: input.recurrence, endAt: input.endAt, nextRunAt, state: nextRunAt ? "ativo" : "concluido", createdById: userId },
+    data: { organizationId, text: input.text, targets: json(input.targets), firstSendAt: input.firstSendAt, recurrence: json(input.recurrence), endAt: input.endAt, nextRunAt, state: nextRunAt ? "ativo" : "concluido", createdById: userId },
     select: noticeSelect,
   });
   // Enfileira fora da transação: se falhar, a reconciliação (5 min) recupera pelo banco.
@@ -1448,11 +1608,13 @@ export async function updateNotice(deps: NoticeDeps, organizationId: string, not
   if (!current) throw new HttpError(404, "Aviso não encontrado.");
   const input = parseNoticeInput(raw, new Date(), { previousFirstSendAt: current.firstSendAt });
   await assertUnitsInOrg(deps.prisma, organizationId, input.targets.unidades);
+  const chats = await loadChats(deps.prisma, organizationId);
+  assertResolvableTargets(input.targets, chats.units, chats.franchisorChatId);
   const plan = planUpdate({ state: current.state, firstSendAt: current.firstSendAt, recurrence: current.recurrence as unknown as NoticeRecurrence, nextRunAt: current.nextRunAt }, input);
   // O estado é decidido no próprio UPDATE: se outra requisição pausou/retomou no meio, prevalece o banco.
   const r = await deps.prisma.whatsappNotice.updateMany({
     where: { id: noticeId, state: { in: ["ativo", "pausado"] } },
-    data: { text: input.text, targets: input.targets, firstSendAt: input.firstSendAt, recurrence: input.recurrence, endAt: input.endAt, nextRunAt: plan.nextRunAt, consecutiveFailures: 0, ...(plan.state === "concluido" ? { state: "concluido" as const } : {}) },
+    data: { text: input.text, targets: json(input.targets), firstSendAt: input.firstSendAt, recurrence: json(input.recurrence), endAt: input.endAt, nextRunAt: plan.nextRunAt, consecutiveFailures: 0, ...(plan.state === "concluido" ? { state: "concluido" as const } : {}) },
   });
   if (r.count === 0) throw new HttpError(409, "Este aviso mudou de estado; recarregue a página.");
   if (current.nextRunAt) await dequeueNotice(deps.queue, noticeId, current.nextRunAt, current.consecutiveFailures).catch(() => false);
@@ -1498,7 +1660,7 @@ export async function noticePageData(prisma: PrismaClient, organizationId: strin
 }
 ```
 
-- [ ] **Step 2: Typecheck** — `pnpm --filter @fsp/web typecheck` → sem erros (o Prisma client já tem os modelos da Task 1; se reclamar de `targets`/`recurrence` como `Json`, passe `input.targets as object`).
+- [ ] **Step 2: Typecheck** — `pnpm --filter @fsp/web typecheck` → sem erros. (`Prisma` vem de `@fsp/db`, que faz `export * from "@prisma/client"`; `NoticeTargets` é um `type` alias justamente para ser atribuível a `InputJsonValue` — o helper `json()` só existe para o caso de a versão do Prisma exigir `InputJsonObject` explícito.)
 
 - [ ] **Step 3: Commit**
 
@@ -1984,7 +2146,10 @@ export function NoticeHistory({ rows }: { rows: DeliveryRow[] }) {
 ```tsx
 "use client";
 
-import { utcToLocal, type NoticeRecurrence, type NoticeTargets } from "@fsp/core";
+// Componente client: NUNCA importar a raiz "@fsp/core" (puxa node:crypto). Só subpaths e `import type`.
+import { utcToLocal } from "@fsp/core/timezone";
+import { NOTICE_TEXT_MAX } from "@fsp/core/whatsapp-notices";
+import type { NoticeRecurrence, NoticeTargets } from "@fsp/core";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { IconAlert, IconCheck } from "./Icons";
@@ -2000,9 +2165,11 @@ function minLocal(): string {
   return utcToLocal(new Date(Date.now() + 5 * 60_000), TZ);
 }
 
+const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
+
 /** Prévia com a formatação do WhatsApp: escapa HTML antes de aplicar *negrito* e _itálico_. */
 function previewHtml(text: string): string {
-  return text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string).replace(/\*(.+?)\*/g, "<b>$1</b>").replace(/_(.+?)_/g, "<i>$1</i>").replace(/\n/g, "<br>");
+  return text.replace(/[&<>]/g, (c) => HTML_ESCAPE[c] ?? c).replace(/\*(.+?)\*/g, "<b>$1</b>").replace(/_(.+?)_/g, "<i>$1</i>").replace(/\n/g, "<br>");
 }
 
 export function NoticeComposer({ units, hasFranchisor, canTest, aiAvailable, editing }: { units: ComposerUnit[]; hasFranchisor: boolean; canTest: boolean; aiAvailable: boolean; editing: EditingNotice | null }) {
@@ -2067,8 +2234,8 @@ export function NoticeComposer({ units, hasFranchisor, canTest, aiAvailable, edi
           <h2 className="section-title"><span className="num">1</span> Texto</h2>
           <div className="field">
             <label htmlFor="notice-text">Mensagem (formatação do WhatsApp: *negrito*, _itálico_)</label>
-            <textarea id="notice-text" value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} rows={6} />
-            <small className="hint">{[...text].length}/4000</small>
+            <textarea id="notice-text" value={text} maxLength={NOTICE_TEXT_MAX} onChange={(e) => setText(e.target.value)} rows={6} />
+            <small className="hint">{[...text].length}/{NOTICE_TEXT_MAX}</small>
           </div>
           {text && <div className="card tight" aria-label="Prévia" dangerouslySetInnerHTML={{ __html: previewHtml(text) }} />}
           <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
@@ -2370,7 +2537,7 @@ pnpm --filter @fsp/db import:whatsapp-groups -- /caminho/unit_groups.json   # --
 
 Na seção "## Usuários e permissões", no item **Administrador**, acrescente "e agenda Avisos WhatsApp"; na tabela do Stack, em `apps/worker`, acrescente "e envia os avisos de WhatsApp".
 
-- [ ] **Step 4: Deploy (sem mudança de código)** — a migration roda no serviço `migrate` do `docker-compose.prod.yml` como hoje. No servidor: acrescentar as 4 variáveis em `/opt/postagem/.env.production` (a `WAHA_URL` é a mesma do `daily`; se o WAHA roda no host, use o IP da bridge do Docker, ex. `http://172.17.0.1:3000`, pois `127.0.0.1` dentro do container é o próprio container) e rodar `bash deploy/deploy.sh feat/avisos-whatsapp` (ou `main` após o merge).
+- [ ] **Step 4: Deploy (sem mudança de código nem de compose)** — a migration roda no serviço `migrate` do `docker-compose.prod.yml` como hoje. O WAHA de produção do `daily` é **externo, em HTTPS** (`WAHA_URL=https://waha.linkwise.digital`, sessão `ceovip`), então os containers `web` e `worker` o alcançam diretamente pela internet — nada de `extra_hosts`, IP de bridge ou rede especial. No servidor: acrescentar as 4 variáveis em `/opt/postagem/.env.production` com os mesmos valores do `.env` do `daily` (`WAHA_URL`, `WAHA_API_KEY`, `WAHA_SESSION=ceovip`) e rodar `bash deploy/deploy.sh feat/avisos-whatsapp` (ou `main` após o merge). Antes do primeiro agendamento, confira o alcance de dentro do worker (checklist da Task 17, item 2).
 
 - [ ] **Step 5: Verificar** — `pnpm test` (toda a suíte) e `pnpm typecheck` verdes; `pnpm build` passa (o `next build` precisa resolver `@anthropic-ai/sdk`).
 
@@ -2449,11 +2616,13 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - [ ] **Step 4: Checklist de produção (decisão do usuário: validar direto em produção, como no daily)**
   1. `.env.production` com `WAHA_URL`, `WAHA_API_KEY`, `WAHA_SESSION`, `ANTHROPIC_API_KEY`; `bash deploy/deploy.sh <branch>` → `migrate` aplica `whatsapp_notices`; `web: HTTP 200`; `worker: iniciado`; log do worker sem `waha disabled`.
-  2. Importar os grupos: `docker compose -f docker-compose.prod.yml run --rm -v /opt/daily/config/unit_groups.json:/tmp/unit_groups.json worker sh -c "cd packages/db && npx tsx scripts/import-whatsapp-groups.ts /tmp/unit_groups.json"` (ajuste o caminho do `daily` no servidor); conferir a lista de "NÃO casadas" e completar em Unidades e contas.
-  3. Em Unidades e contas: grupo da franqueadora; em Minha conta: o próprio número (`554899073477@c.us`, JID antigo de 12 dígitos).
-  4. `/avisos`: "Gerar com IA" produz texto; "Enviar teste para mim" chega; agendar para +2 min **apenas para uma unidade de teste escolhida na hora** → histórico `enviado`; agendar um recorrente, pausar/retomar/editar e **cancelar ao final**.
-  5. Logs: `docker compose -f docker-compose.prod.yml logs --since 10m worker | grep notice` mostra `notice sent`.
-  6. O `daily` continua enviando os briefings normalmente; quando a franqueadora decidir migrar de vez, desligar lá o job `agendamentos` (fora deste plano).
+  2. Alcance do WAHA de dentro do container (antes do primeiro agendamento): `docker compose --env-file .env.production -f docker-compose.prod.yml exec worker sh -c 'curl -sS -o /dev/null -w "%{http_code}\n" -H "X-Api-Key: $WAHA_API_KEY" "$WAHA_URL/api/sessions"'` → `200` (se a imagem não tiver `curl`, use `node -e 'fetch(process.env.WAHA_URL+"/api/sessions",{headers:{"X-Api-Key":process.env.WAHA_API_KEY}}).then(r=>console.log(r.status))'`).
+  3. Importar os grupos (o `daily` fica em `/opt/daily` no servidor — ajuste se for outro caminho): `docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --no-deps -v /opt/daily/config/unit_groups.json:/tmp/unit_groups.json:ro worker node node_modules/tsx/dist/cli.mjs packages/db/scripts/import-whatsapp-groups.ts /tmp/unit_groups.json` (o `tsx` está instalado na imagem porque o `pnpm install` roda antes de `NODE_ENV=production`); conferir "NÃO casadas" e os AVISOS de unidades com mais de um chat; completar em Unidades e contas.
+  4. **Operação em paralelo — atenção do operador:** o `/admin/mensagens` do `daily` (Python) **continua rodando** por decisão do usuário. Nunca cadastre o mesmo agendamento nos dois sistemas: a mensagem seria enviada duas vezes aos mesmos grupos. Até o desligamento do job `agendamentos` do `daily`, combine quem agenda o quê.
+  5. Em Unidades e contas: grupo da franqueadora; em Minha conta: o próprio número (`554899073477@c.us`, JID antigo de 12 dígitos).
+  6. `/avisos`: "Gerar com IA" produz texto; "Enviar teste para mim" chega; agendar para +2 min **apenas para uma unidade de teste escolhida na hora** → histórico `enviado`; agendar um recorrente, pausar/retomar/editar e **cancelar ao final**.
+  7. Logs: `docker compose --env-file .env.production -f docker-compose.prod.yml logs --since 10m worker | grep notice` mostra `notice sent`.
+  8. O `daily` continua enviando os briefings normalmente; quando a franqueadora decidir migrar de vez, desligar lá o job `agendamentos` (fora deste plano).
 
 ---
 
