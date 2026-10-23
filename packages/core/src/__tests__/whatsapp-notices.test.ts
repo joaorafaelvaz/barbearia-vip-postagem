@@ -91,4 +91,30 @@ describe("nextOccurrence (portado de daily tests/test_agendamentos.py)", () => {
   it("diária com after no meio do dia, antes do horário, dispara no mesmo dia", () => {
     expect(nextOccurrence(sp("2026-10-26T09:00"), sp("2026-10-25T15:00"), { tipo: "diaria" }, null)).toEqual(sp("2026-10-26T15:00"));
   });
+  it("diária no próprio dia do primeiro envio, antes do horário, dispara no primeiro", () => {
+    expect(nextOccurrence(sp("2026-10-25T10:00"), sp("2026-10-25T15:00"), { tipo: "diaria" }, null)).toEqual(sp("2026-10-25T15:00"));
+  });
+  it("mensal dia 31 encadeia jan -> fev (28) -> mar (31) e cai em 29/02 em ano bissexto", () => {
+    const rec = { tipo: "mensal" as const, dia: 31 };
+    const first = sp("2026-01-31T08:00");
+    const feb = nextOccurrence(first, first, rec, null);
+    expect(feb).toEqual(sp("2026-02-28T08:00"));
+    expect(nextOccurrence(feb, first, rec, null)).toEqual(sp("2026-03-31T08:00"));
+    expect(nextOccurrence(sp("2028-01-31T08:00"), sp("2028-01-31T08:00"), rec, null)).toEqual(sp("2028-02-29T08:00"));
+  });
+  it("fim exatamente igual à candidata ainda devolve a candidata", () => {
+    expect(nextOccurrence(sp("2026-10-25T15:00"), sp("2026-10-25T15:00"), { tipo: "diaria" }, sp("2026-10-26T15:00"))).toEqual(sp("2026-10-26T15:00"));
+  });
+  it("semanal [sexta] com after na própria sexta no mesmo horário vai para a sexta seguinte", () => {
+    const rec = { tipo: "semanal" as const, dias: [4] };
+    expect(nextOccurrence(sp("2026-10-23T09:00"), sp("2026-10-23T09:00"), rec, null)).toEqual(sp("2026-10-30T09:00")); // 23/10/2026 é sexta
+  });
+  it("mensal com dia inválido lança", () => {
+    const first = sp("2026-10-25T08:00");
+    for (const dia of [0, 32, -1, 1.5, Number.NaN]) {
+      expect(() => nextOccurrence(null, first, { tipo: "mensal", dia }, null)).toThrow("dia do mês inválido");
+    }
+    expect(() => nextOccurrence(null, first, { tipo: "mensal", dia: "ultimo" }, null)).not.toThrow();
+    expect(() => nextOccurrence(null, first, { tipo: "mensal", dia: 1 }, null)).not.toThrow();
+  });
 });

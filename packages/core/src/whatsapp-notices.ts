@@ -110,7 +110,7 @@ export function resolveNoticeTargets(targets: NoticeTargets, units: readonly Not
 
 /** Chave de comparação de nomes de unidade: sem acentos, minúsculas, espaços normalizados. */
 export function normalizeUnitName(name: string): string {
-  return name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 interface CivilDate { y: number; m: number; d: number }
@@ -175,7 +175,7 @@ export function nextOccurrence(after: Date | null, first: Date, rec: NoticeRecur
 function firstValid(day: CivilDate, time: string, rec: Exclude<NoticeRecurrence, { tipo: "nenhuma" }>): Date {
   if (rec.tipo === "diaria") return at(day, time);
   if (rec.tipo === "semanal") {
-    const dias = [...new Set(rec.dias.map(Number))].sort();
+    const dias = [...new Set(rec.dias.map(Number))].sort((a, b) => a - b);
     if (dias.length === 0) throw new Error("recorrência semanal sem dias");
     let d = day;
     for (let i = 0; i < 7; i++) {
@@ -185,6 +185,7 @@ function firstValid(day: CivilDate, time: string, rec: Exclude<NoticeRecurrence,
     throw new Error("inalcançável");
   }
   // mensal
+  if (rec.dia !== "ultimo" && !(Number.isInteger(rec.dia) && rec.dia >= 1 && rec.dia <= 31)) throw new Error("dia do mês inválido");
   let { y, m } = day;
   const start = at(day, time).getTime();
   for (let i = 0; i < 14; i++) {
