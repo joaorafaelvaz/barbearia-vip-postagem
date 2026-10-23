@@ -13,12 +13,15 @@ model Organization {
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// Grupo/número WhatsApp da franqueadora (destino "Franqueadora" dos avisos). Formato WAHA: 123@g.us ou 55DDDN@c.us
+  whatsappChatId String?
 
-  users    User[]
-  units    Unit[]
-  posts    Post[]
-  media    MediaAsset[]
-  accounts ConnectedAccount[]
+  users           User[]
+  units           Unit[]
+  posts           Post[]
+  media           MediaAsset[]
+  accounts        ConnectedAccount[]
+  whatsappNotices WhatsappNotice[]
 }
 
 enum UserRole {
@@ -34,6 +37,8 @@ model User {
   passwordHash   String?
   role           UserRole @default(MANAGER)
   isActive       Boolean  @default(true)
+  /// Número do próprio usuário para "Enviar teste para mim" (formato WAHA)
+  whatsappChatId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -63,6 +68,8 @@ model Unit {
   name           String
   city           String?
   timezone       String   @default("America/Sao_Paulo")
+  /// Grupo WhatsApp do franqueado desta unidade (formato WAHA). Null = não recebe avisos.
+  whatsappChatId String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -273,4 +280,67 @@ model ExternalPost {
 
   @@unique([connectedAccountId, externalId])
   @@index([organizationId, publishedAt])
+}
+
+enum WhatsappNoticeState {
+  ativo
+  pausado
+  enviando
+  concluido
+  cancelado
+}
+
+enum WhatsappDeliveryStatus {
+  enviado
+  falhou
+  perdido
+  pausado
+}
+
+/// Aviso agendado para os grupos de WhatsApp das unidades (espelha `agendamentos` do daily).
+model WhatsappNotice {
+  id                  String              @id @default(cuid())
+  organizationId      String
+  text                String
+  /// {"unidades":[unitId...],"todas":bool,"franqueadora":bool} — chat_ids resolvidos no envio
+  targets             Json
+  /// Primeiro envio em UTC (escolhido no fuso America/Sao_Paulo)
+  firstSendAt         DateTime
+  /// {"tipo":"nenhuma"} | {"tipo":"diaria"} | {"tipo":"semanal","dias":[0..6]} | {"tipo":"mensal","dia":1..31|"ultimo"}
+  recurrence          Json
+  endAt               DateTime?
+  /// Próxima ocorrência (UTC); null quando concluído/cancelado
+  nextRunAt           DateTime?
+  state               WhatsappNoticeState @default(ativo)
+  consecutiveFailures Int                 @default(0)
+  /// Reserva do ciclo em curso; liberada pela reconciliação após 10 min
+  sendingStartedAt    DateTime?
+  createdById         String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries   WhatsappDelivery[]
+
+  @@index([organizationId, state, nextRunAt])
+  @@index([state, nextRunAt])
+}
+
+/// Resultado de um envio por destino (espelha `envios`). Linha "de sistema": chatId "-", targetName "sistema".
+model WhatsappDelivery {
+  id             String                 @id @default(cuid())
+  organizationId String
+  noticeId       String
+  /// nextRunAt que originou o disparo
+  occurrenceAt   DateTime
+  sentAt         DateTime               @default(now())
+  chatId         String
+  targetName     String
+  status         WhatsappDeliveryStatus
+  error          String?
+
+  notice WhatsappNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, occurrenceAt, chatId])
+  @@index([organizationId, sentAt])
 }
