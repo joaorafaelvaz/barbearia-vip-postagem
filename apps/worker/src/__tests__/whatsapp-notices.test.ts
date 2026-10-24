@@ -89,6 +89,29 @@ describe("processNotice", () => {
     expect(rows().every((r) => r.status === "perdido")).toBe(true);
   });
 
+  it("retentativa atrasada (> 2h) marca perdido só quem não recebeu; o 'enviado' anterior fica intacto", async () => {
+    const { repo, notice, rows } = fakeRepo({ recurrence: { tipo: "nenhuma" } });
+    const { queue } = fakeQueue();
+    const d1 = deps(repo, queue, (c) => { if (c === "b@g.us") throw new Error("queda"); return true; }, min(1));
+    expect((await processNotice(d1, JOB)).outcome).toBe("retry"); // a enviado, b nunca gravado
+    const d2 = deps(repo, queue, () => true, new Date(T0.getTime() + 3 * 3_600_000));
+    expect((await processNotice(d2, JOB)).outcome).toBe("missed");
+    expect(d2.sent).toEqual([]);
+    expect(notice.state).toBe("concluido");
+    expect(rows().map((r) => [r.chatId, r.status])).toEqual([["a@g.us", "enviado"], ["b@g.us", "perdido"]]);
+  });
+
+  it("fila falha depois de fechar o ciclo: 'sent' mesmo assim, com log próprio (a reconciliação reenfileira)", async () => {
+    const { repo, notice } = fakeRepo({ targets: { unidades: ["u61"], todas: false, franqueadora: false } });
+    const logs: string[] = [];
+    const broken: NoticeQueueLike = { async add() { throw new Error("ECONNREFUSED"); }, async getJob() { return undefined; } };
+    const d = { ...deps(repo, broken, () => true, min(1)), log: (m: string) => { logs.push(m); } };
+    expect(await processNotice(d, JOB)).toEqual({ outcome: "sent", sent: 1, failed: 0 });
+    expect(notice.state).toBe("ativo");
+    expect(notice.nextRunAt).toEqual(sp("2026-10-26T15:00"));
+    expect(logs).toEqual(["notice advanced but enqueue failed; reconcile will requeue", "notice sent"]);
+  });
+
   it("sucesso parcial conta como ciclo ok e guarda o erro do WAHA no destino que falhou", async () => {
     const { repo, notice, rows } = fakeRepo({ recurrence: { tipo: "nenhuma" } });
     const d = deps(repo, fakeQueue().queue, (c) => c === "a@g.us", min(1));

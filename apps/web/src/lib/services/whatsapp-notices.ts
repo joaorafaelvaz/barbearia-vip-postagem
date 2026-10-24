@@ -99,20 +99,30 @@ export function assertResolvableTargets(targets: NoticeTargets, units: readonly 
   if (resolveNoticeTargets(targets, units, franchisorChatId).length === 0) throw new HttpError(400, "Escolha ao menos um destino.");
 }
 
-/** Fila própria dos avisos (`whatsapp-notices`), nunca a `publish`. */
-export interface NoticeDeps { prisma: PrismaClient; queue: NoticeQueueLike; log?: (msg: string, meta?: Record<string, unknown>) => void }
+/** Fila própria dos avisos (`whatsapp-notices`), nunca a `publish`. `queueTimeoutMs` só para testes. */
+export interface NoticeDeps { prisma: PrismaClient; queue: NoticeQueueLike; log?: (msg: string, meta?: Record<string, unknown>) => void; queueTimeoutMs?: number }
+
+/** Com o Redis fora do ar o ioredis (maxRetriesPerRequest: null) não rejeita: o `add` fica pendurado. Teto para não travar a requisição. */
+export const QUEUE_TIMEOUT_MS = 5_000;
 
 const defaultLog = (msg: string, meta?: Record<string, unknown>) => console.warn(JSON.stringify({ ts: new Date().toISOString(), msg, ...meta }));
 
 /**
- * Operações de fila depois da escrita no banco nunca viram 500: o banco é a fonte da verdade e a
- * reconciliação do worker (a cada 5 min) reenfileira o que falta / ignora job de ocorrência antiga.
+ * Operações de fila depois da escrita no banco nunca viram 500 nem travam: o banco é a fonte da
+ * verdade e a reconciliação do worker (a cada 5 min) reenfileira o que falta / ignora job de
+ * ocorrência antiga. Rejeição -> "notice queue failed"; sem resposta em 5 s -> "notice queue timeout".
  */
 async function queueSafely(deps: NoticeDeps, op: string, meta: Record<string, unknown>, fn: () => Promise<unknown>): Promise<void> {
+  const log = deps.log ?? defaultLog;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), deps.queueTimeoutMs ?? QUEUE_TIMEOUT_MS); });
   try {
-    await fn();
+    const outcome = await Promise.race([fn().then(() => "ok" as const), timeout]);
+    if (outcome === "timeout") log("notice queue timeout", { op, ...meta, timeoutMs: deps.queueTimeoutMs ?? QUEUE_TIMEOUT_MS });
   } catch (err) {
-    (deps.log ?? defaultLog)("notice queue failed", { op, ...meta, error: err instanceof Error ? err.message : String(err) });
+    log("notice queue failed", { op, ...meta, error: err instanceof Error ? err.message : String(err) });
+  } finally {
+    clearTimeout(timer);
   }
 }
 

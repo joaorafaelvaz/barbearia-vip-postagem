@@ -28,6 +28,27 @@ export function anthropicNoticeClient(apiKey: string): NoticeAiClient {
 const inputSchema = z.object({ assunto: z.string().max(500).default(""), tom: z.string().max(40).default(TONES[0]) });
 
 /**
+ * Limite por usuário em memória (janela deslizante): segura cliques repetidos no botão e o custo
+ * da API. Por processo — suficiente para uma instância web; não substitui o limite da conta.
+ */
+export function createThrottle(limit = 10, windowMs = 60_000) {
+  const hits = new Map<string, number[]>();
+  return {
+    allow(key: string, now: number = Date.now()): boolean {
+      const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+      if (recent.length >= limit) { hits.set(key, recent); return false; }
+      recent.push(now);
+      hits.set(key, recent);
+      return true;
+    },
+  };
+}
+
+/** Instância compartilhada pela rota (10 gerações por minuto por usuário). */
+export const aiThrottle = createThrottle(10, 60_000);
+export const AI_THROTTLE_MESSAGE = "Muitas gerações seguidas. Aguarde um minuto.";
+
+/**
  * Gera o texto do aviso (porta de daily/admin/ia.py): claude-opus-5-5, effort low, 1024 tokens,
  * fallback de recusa do lado do servidor, timeout 30 s, 1 retentativa. O texto NUNCA é agendado
  * automaticamente: volta para a caixa de texto, editável.

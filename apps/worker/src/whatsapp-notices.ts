@@ -98,7 +98,15 @@ export async function processNotice(deps: NoticeDeps, data: WhatsappNoticeJobDat
       log("notice cancelled during send", { ...meta });
       return null;
     }
-    if (next) await enqueueNotice(deps.queue, notice.id, next, 0, now());
+    if (next) {
+      // O ciclo já fechou no banco: uma falha da fila aqui não é falha de envio (não pode virar
+      // retentativa nem "cancelado"); a reconciliação reenfileira pelo nextRunAt gravado.
+      try {
+        await enqueueNotice(deps.queue, notice.id, next, 0, now());
+      } catch (err) {
+        log("notice advanced but enqueue failed; reconcile will requeue", { ...meta, nextRunAt: next.toISOString(), error: err instanceof Error ? err.message : String(err) });
+      }
+    }
     return state;
   };
   const fail = async (reason: string, forcePause = false): Promise<NoticeOutcome> => {
@@ -122,11 +130,18 @@ export async function processNotice(deps: NoticeDeps, data: WhatsappNoticeJobDat
   try {
     const targets = resolveNoticeTargets(notice.targets, await deps.repo.listUnitChats(notice.organizationId), await deps.repo.franchisorChatId(notice.organizationId));
 
-    // 2. Atraso > 2h: registra perdido por destino e não envia
+    // 2. Atraso > 2h: registra perdido por destino e não envia. Quem já recebeu esta ocorrência
+    // numa tentativa anterior (sucesso parcial + retentativa atrasada) mantém o "enviado".
     if (now().getTime() - occurrenceAt.getTime() > NOTICE_MAX_DELAY_MS) {
-      for (const t of targets) await deps.repo.recordDelivery({ noticeId: notice.id, organizationId: notice.organizationId, occurrenceAt, chatId: t.chatId, targetName: t.name, status: "perdido", error: "atraso > 2h" });
+      const delivered = await deps.repo.sentChatIds(notice.id, occurrenceAt);
+      let missed = 0;
+      for (const t of targets) {
+        if (delivered.has(t.chatId)) continue;
+        await deps.repo.recordDelivery({ noticeId: notice.id, organizationId: notice.organizationId, occurrenceAt, chatId: t.chatId, targetName: t.name, status: "perdido", error: "atraso > 2h" });
+        missed++;
+      }
       if ((await advance()) === null) return skipped(STATE_CHANGED);
-      log("notice missed", { ...meta, targets: targets.length });
+      log("notice missed", { ...meta, targets: targets.length, missed, alreadySent: delivered.size });
       return { outcome: "missed" };
     }
     // Sem destinos: não vai se resolver sozinho; pausa já, com motivo (uma única linha de sistema por causa do UNIQUE)

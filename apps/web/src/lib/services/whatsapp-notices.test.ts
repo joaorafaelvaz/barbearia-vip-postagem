@@ -130,6 +130,19 @@ describe("fila indisponível depois da escrita no banco não vira 500 (a reconci
   });
 });
 
+describe("fila pendurada (Redis fora: o add não rejeita, fica esperando)", () => {
+  it("createNotice devolve em até queueTimeoutMs e loga 'notice queue timeout'", async () => {
+    const { prisma } = fakePrisma(null);
+    const logs: string[] = [];
+    const hanging = { add: () => new Promise<never>(() => {}), async getJob() { return undefined; } };
+    const started = Date.now();
+    const notice = await createNotice({ prisma, queue: hanging, log: (m) => { logs.push(m); }, queueTimeoutMs: 30 }, "o1", "me", base);
+    expect(notice.id).toBe("n1");
+    expect(logs).toEqual(["notice queue timeout"]);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});
+
 describe("updateNotice checa o estado antes de validar a entrada", () => {
   it("cancelado com dados inválidos -> 404 (não 400)", async () => {
     const { prisma } = fakePrisma({ ...activeNotice, state: "cancelado" });

@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { generateNoticeText, type NoticeAiClient } from "./whatsapp-ai";
+import { createThrottle, generateNoticeText, type NoticeAiClient } from "./whatsapp-ai";
+
+describe("createThrottle (10 por minuto por usuário)", () => {
+  it("deixa passar 10, barra a 11ª e libera quando a janela passa; usuários independentes", () => {
+    const t = createThrottle(10, 60_000);
+    const t0 = 1_000_000;
+    for (let i = 0; i < 10; i++) expect(t.allow("u1", t0 + i)).toBe(true);
+    expect(t.allow("u1", t0 + 10)).toBe(false);
+    expect(t.allow("u2", t0 + 10)).toBe(true);
+    expect(t.allow("u1", t0 + 59_999)).toBe(false);
+    expect(t.allow("u1", t0 + 60_000)).toBe(true); // a 1ª saiu da janela
+  });
+});
 
 function fakeClient(resp: { stop_reason: string | null; content: Array<{ type: string; text?: string }> }, seen: Record<string, unknown>[] = []): NoticeAiClient {
   return { async create(params, options) { seen.push({ ...params, options }); return resp; } };

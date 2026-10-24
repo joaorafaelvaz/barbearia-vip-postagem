@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { IconAlert, IconCheck } from "./Icons";
 import { WEEKDAYS_PT } from "@/lib/format";
+import { previewHtml } from "@/lib/whatsapp-preview";
 
 const TZ = "America/Sao_Paulo";
 const TONES = ["Amigável", "Formal", "Urgente"];
@@ -18,13 +19,6 @@ export interface EditingNotice { id: string; text: string; targets: NoticeTarget
 
 function minLocal(): string {
   return utcToLocal(new Date(Date.now() + 5 * 60_000), TZ);
-}
-
-const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
-
-/** Prévia com a formatação do WhatsApp: escapa HTML antes de aplicar *negrito* e _itálico_. */
-function previewHtml(text: string): string {
-  return text.replace(/[&<>]/g, (c) => HTML_ESCAPE[c] ?? c).replace(/\*(.+?)\*/g, "<b>$1</b>").replace(/_(.+?)_/g, "<i>$1</i>").replace(/\n/g, "<br>");
 }
 
 export function NoticeComposer({ units, hasFranchisor, canTest, aiAvailable, editing }: { units: ComposerUnit[]; hasFranchisor: boolean; canTest: boolean; aiAvailable: boolean; editing: EditingNotice | null }) {
@@ -69,7 +63,14 @@ export function NoticeComposer({ units, hasFranchisor, canTest, aiAvailable, edi
       kind === "save" ? [editing ? `/api/whatsapp-notices/${editing.id}` : "/api/whatsapp-notices", editing ? "PATCH" : "POST", body()]
       : kind === "test" ? ["/api/whatsapp-notices/test", "POST", { text }]
       : ["/api/whatsapp-notices/generate", "POST", { assunto, tom }];
-    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    let res: Response;
+    try {
+      res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    } catch {
+      setBusy(null);
+      setMsg({ error: "Falha de rede. Tente novamente." });
+      return;
+    }
     const data = (await res.json().catch(() => ({}))) as { error?: string; text?: string; details?: { fieldErrors?: Record<string, string[]> } | null };
     setBusy(null);
     if (!res.ok) {
