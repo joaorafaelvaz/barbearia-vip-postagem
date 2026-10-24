@@ -20,6 +20,7 @@ export * from "./tiktok.js";
 export * from "./youtube.js";
 export * from "./insights.js";
 export * from "./imports.js";
+export * from "./waha.js";
 export { mapMetaError, mapGoogleError } from "./http.js";
 
 /** Fábrica: devolve o Publisher da plataforma. */
