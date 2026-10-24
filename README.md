@@ -17,7 +17,7 @@ TypeScript ponta a ponta. Monorepo pnpm:
 | Pasta | O que é |
 |---|---|
 | `apps/web` | Next.js 15 (UI + API + callbacks OAuth) |
-| `apps/worker` | Worker BullMQ que publica no horário |
+| `apps/worker` | Worker BullMQ que publica no horário e envia os avisos de WhatsApp |
 | `packages/db` | Prisma + PostgreSQL |
 | `packages/core` | Regras puras: criptografia de tokens, fuso horário, limites por plataforma |
 | `packages/connectors` | Adaptadores Facebook Page, Instagram, Google Business Profile e OAuth |
@@ -302,10 +302,53 @@ com a nota `[DELETED]` e remove a cópia importada do analytics. Exige
 `instagram_manage_comments` (contas conectadas antes precisam reconectar). Facebook e
 Google aparecem como "em breve".
 
+## Avisos WhatsApp
+
+O menu **Avisos WhatsApp** (só administradores) agenda mensagens para os grupos de WhatsApp das
+unidades via [WAHA](https://waha.devlike.pro/): texto livre ou gerado por IA a partir de um assunto,
+destinos (unidades, todas, grupo da franqueadora), data/hora do primeiro envio no horário de
+Brasília, repetição (única, diária, semanal, mensal com "ultimo") e data final. O worker envia no
+horário (job `whatsapp-notice`, fila própria `whatsapp-notices` com um envio por vez), grava o
+resultado por destino no histórico e segue estas regras: atraso acima de 2 h marca a ocorrência como
+"perdido" sem enviar; uma falha de ciclo é retentada no minuto seguinte sem reenviar a quem já
+recebeu; três falhas consecutivas pausam o aviso (retomar pela tela zera o contador). Avisos presos
+ou sem job na fila são recuperados pela reconciliação (a cada 5 min e na subida do worker).
+
+Configuração: `WAHA_URL`, `WAHA_API_KEY`, `WAHA_SESSION` (envio; vazio desabilita e a tela avisa) e
+`ANTHROPIC_API_KEY` (botão "Gerar com IA", modelo `claude-opus-5-5`; o texto gerado volta para a
+caixa, editável — nada é agendado sozinho). Os grupos ficam em **Unidades e contas** (campo "Grupo
+WhatsApp da unidade" de cada unidade e o card "Grupo WhatsApp da franqueadora"); o número de cada
+usuário para "Enviar teste para mim" fica em **Minha conta**. Formato WAHA: `123@g.us` (grupo) ou
+`55DDDN@c.us` (número; alguns contatos só funcionam no JID antigo de 12 dígitos, sem o nono dígito).
+
+Importar os grupos já usados pelo briefing diário (`daily/config/unit_groups.json`), casando pelo
+nome da unidade sem acentos/caixa (unidades já preenchidas são puladas; `--force` sobrescreve; com
+mais de uma organização no banco, passe `--org <id>`):
+
+```bash
+# desenvolvimento (banco do docker-compose.yml)
+pnpm --filter @fsp/db import:whatsapp-groups -- /caminho/unit_groups.json
+
+# produção: o Postgres não expõe porta no host, então o script roda na imagem do worker
+# (ela contém packages/db/scripts, o tsx e o client Prisma); o daily fica em /opt/barbearia-daily
+cd /opt/postagem && docker compose --env-file .env.production -f docker-compose.prod.yml \
+  run --rm --no-deps -v /opt/barbearia-daily/config/unit_groups.json:/tmp/unit_groups.json:ro \
+  worker sh -c 'cd packages/db && node node_modules/tsx/dist/cli.mjs scripts/import-whatsapp-groups.ts /tmp/unit_groups.json'
+```
+
+Antes do primeiro agendamento em produção, confira o alcance do WAHA de dentro do worker (a imagem
+não tem `curl`): `docker compose --env-file .env.production -f docker-compose.prod.yml exec worker node -e 'fetch(process.env.WAHA_URL.replace(/\/+$/,"")+"/api/sessions",{headers:{"X-Api-Key":process.env.WAHA_API_KEY}}).then(r=>console.log(r.status))'`
+deve imprimir `200`. Logs dos envios: `docker compose -f docker-compose.prod.yml logs --since 10m worker | grep notice`.
+
+**Atenção na operação:** enquanto o `/admin/mensagens` do briefing diário (`daily`, Python) continuar
+ativo, os dois sistemas enviam pelo mesmo WAHA para os mesmos grupos. Não cadastre o mesmo aviso nos
+dois — ele chegaria duas vezes. Combine quem agenda o quê até desligar o job `agendamentos` do `daily`.
+
 ## Usuários e permissões
 
 - **Administrador**: vê todas as unidades, cadastra unidades, conecta contas, cria usuários e
   delega unidades a cada gestor em **Usuários**. Pode desativar usuários e promover gestores.
+  Só ele agenda **Avisos WhatsApp** e cadastra os grupos de WhatsApp das unidades e da franqueadora.
 - **Gestor**: só vê e publica nas unidades delegadas. Não cadastra unidades nem acessa a
   gestão de usuários. A API devolve 403 fora desse escopo.
 - O cadastro público em `/registro` só funciona até existir a primeira organização; depois
