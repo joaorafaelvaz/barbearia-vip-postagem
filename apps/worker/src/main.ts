@@ -2,8 +2,8 @@ import { config as loadEnv } from "dotenv";
 import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
-import { createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken, refreshTikTokToken, type ConnectorOptions } from "@fsp/connectors";
-import { CLEANUP_JOB_NAME, DEFAULT_MEDIA_RETENTION_DAYS, IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData } from "@fsp/core";
+import { WahaClient, createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken, refreshTikTokToken, type ConnectorOptions } from "@fsp/connectors";
+import { CLEANUP_JOB_NAME, DEFAULT_MEDIA_RETENTION_DAYS, IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, WHATSAPP_NOTICE_JOB_NAME, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData, type WhatsappNoticeJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
 import { createPublishQueue, createRedisConnection, ensureCleanupScheduler, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
 import { Worker } from "bullmq";
@@ -12,7 +12,8 @@ import { importPosts } from "./imports.js";
 import { collectMetrics } from "./metrics.js";
 import { reconcileTargets } from "./reconcile.js";
 import { processTarget, resolveAccessToken, type ProcessorDeps } from "./processor.js";
-import { prismaCleanupRepository, prismaImportRepository, prismaMetricsRepository, prismaReconcileRepository, prismaSegmentRepository, prismaTargetRepository } from "./repository.js";
+import { prismaCleanupRepository, prismaImportRepository, prismaMetricsRepository, prismaNoticeRepository, prismaReconcileRepository, prismaSegmentRepository, prismaTargetRepository } from "./repository.js";
+import { processNotice, reconcileNotices } from "./whatsapp-notices.js";
 import { ensureNormalized, type NormalizeDeps } from "./normalize.js";
 import { ffmpegTranscoder, ffprobeProber } from "./normalize-ffmpeg.js";
 import { ensureStorySegments, ffmpegSplitter, type SegmentDeps } from "./segments.js";
@@ -76,6 +77,9 @@ async function main(): Promise<void> {
   const metricsRepo = prismaMetricsRepository(prisma);
   const importRepo = prismaImportRepository(prisma);
   const reconcileRepo = prismaReconcileRepository(prisma);
+  const noticeRepo = prismaNoticeRepository(prisma);
+  const waha = WahaClient.fromEnv();
+  if (!waha) log("waha disabled", { reason: "WAHA_URL ausente; avisos WhatsApp falharão até configurar" });
   const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 5);
   const worker = new Worker<AppJobData>(
     PUBLISH_QUEUE_NAME,
@@ -85,7 +89,12 @@ async function main(): Promise<void> {
         return cleanupMedia({ repo: prismaCleanupRepository(prisma), storage, retentionDays, log });
       }
       if (job.name === RECONCILE_JOB_NAME) {
-        return reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
+        const targets = await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
+        const notices = await reconcileNotices({ repo: noticeRepo, queue, log: deps.log });
+        return { targets, notices };
+      }
+      if (job.name === WHATSAPP_NOTICE_JOB_NAME) {
+        return processNotice({ repo: noticeRepo, queue, sender: waha, log: deps.log }, job.data as WhatsappNoticeJobData);
       }
       if (job.name === PREPARE_MEDIA_JOB_NAME) {
         const mediaId = (job.data as PrepareMediaJobData).mediaId;
@@ -145,7 +154,13 @@ async function main(): Promise<void> {
   await ensureReconcileScheduler(queue);
   await ensureCleanupScheduler(queue);
   // Reconcilia já na subida: retoma o que ficou preso enquanto o worker esteve fora.
-  await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
+  // Uma falha aqui (banco ainda subindo, migration atrasada) não derruba o worker; o agendador de 5 min repete.
+  try {
+    await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
+    await reconcileNotices({ repo: noticeRepo, queue, log: deps.log });
+  } catch (err) {
+    log("startup reconcile failed", { error: err instanceof Error ? err.message : String(err) });
+  }
   console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, metricsScheduler: "6h", uploads: process.env.S3_BUCKET ? "s3" : uploadsDir() }));
 
   const shutdown = async () => {

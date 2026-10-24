@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@fsp/db";
-import type { MediaKind, Platform, PostFormat } from "@fsp/core";
+import type { MediaKind, NoticeRecurrence, NoticeTargets, Platform, PostFormat } from "@fsp/core";
 import type { PostMetrics } from "@fsp/connectors";
 import type { TargetRecord, TargetRepository } from "./processor.js";
 import type { ExternalPostSummary } from "@fsp/connectors";
@@ -8,6 +8,7 @@ import type { MetricsRepository, MetricsTarget } from "./metrics.js";
 import type { ReconcileRepository } from "./reconcile.js";
 import type { CleanupRepository } from "./cleanup.js";
 import type { SegmentRef, SegmentRepository, SourceMedia } from "./segments.js";
+import type { NoticeRepository } from "./whatsapp-notices.js";
 
 /** Implementação Prisma do repositório usado pelo processador. */
 export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
@@ -281,6 +282,57 @@ export function prismaCleanupRepository(prisma: PrismaClient): CleanupRepository
     },
     async deleteMedia(id) {
       await prisma.mediaAsset.delete({ where: { id } });
+    },
+  };
+}
+
+/** Implementação Prisma do repositório de avisos WhatsApp. */
+export function prismaNoticeRepository(prisma: PrismaClient): NoticeRepository {
+  return {
+    async loadNotice(id) {
+      const n = await prisma.whatsappNotice.findUnique({ where: { id } });
+      if (!n) return null;
+      return { id: n.id, organizationId: n.organizationId, text: n.text, targets: n.targets as unknown as NoticeTargets, firstSendAt: n.firstSendAt, recurrence: n.recurrence as unknown as NoticeRecurrence, endAt: n.endAt, nextRunAt: n.nextRunAt, state: n.state, consecutiveFailures: n.consecutiveFailures, sendingStartedAt: n.sendingStartedAt };
+    },
+    async claim(id, occurrenceAt) {
+      const r = await prisma.whatsappNotice.updateMany({ where: { id, state: "ativo", nextRunAt: occurrenceAt }, data: { state: "enviando", sendingStartedAt: new Date() } });
+      return r.count === 1;
+    },
+    async listUnitChats(organizationId) {
+      return prisma.unit.findMany({ where: { organizationId }, orderBy: { name: "asc" }, select: { id: true, name: true, whatsappChatId: true } });
+    },
+    async franchisorChatId(organizationId) {
+      const o = await prisma.organization.findUnique({ where: { id: organizationId }, select: { whatsappChatId: true } });
+      return o?.whatsappChatId ?? null;
+    },
+    async sentChatIds(noticeId, occurrenceAt) {
+      const rows = await prisma.whatsappDelivery.findMany({ where: { noticeId, occurrenceAt, status: "enviado" }, select: { chatId: true } });
+      return new Set(rows.map((r) => r.chatId));
+    },
+    async recordDelivery(d) {
+      const data = { organizationId: d.organizationId, status: d.status, error: d.error ?? null, targetName: d.targetName, sentAt: new Date() };
+      await prisma.whatsappDelivery.upsert({
+        where: { noticeId_occurrenceAt_chatId: { noticeId: d.noticeId, occurrenceAt: d.occurrenceAt, chatId: d.chatId } },
+        create: { noticeId: d.noticeId, occurrenceAt: d.occurrenceAt, chatId: d.chatId, ...data },
+        update: data,
+      });
+    },
+    async finishCycle(id, patch) {
+      const r = await prisma.whatsappNotice.updateMany({ where: { id, state: "enviando" }, data: { ...patch, sendingStartedAt: null } });
+      return r.count === 1;
+    },
+    async listStaleSending(before) {
+      return prisma.whatsappNotice.findMany({ where: { state: "enviando", OR: [{ sendingStartedAt: null }, { sendingStartedAt: { lt: before } }] }, select: { id: true }, take: 500 });
+    },
+    async touchSending(id) {
+      await prisma.whatsappNotice.updateMany({ where: { id, state: "enviando" }, data: { sendingStartedAt: new Date() } });
+    },
+    async releaseStale(id) {
+      await prisma.whatsappNotice.updateMany({ where: { id, state: "enviando" }, data: { state: "ativo", sendingStartedAt: null } });
+    },
+    async listActive(updatedBefore) {
+      const rows = await prisma.whatsappNotice.findMany({ where: { state: "ativo", nextRunAt: { not: null }, updatedAt: { lt: updatedBefore } }, select: { id: true, nextRunAt: true, consecutiveFailures: true }, orderBy: { nextRunAt: "asc" }, take: 2000 });
+      return rows.map((r) => ({ id: r.id, nextRunAt: r.nextRunAt as Date, consecutiveFailures: r.consecutiveFailures }));
     },
   };
 }
