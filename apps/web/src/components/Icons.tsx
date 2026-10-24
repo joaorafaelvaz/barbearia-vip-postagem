@@ -29,6 +29,7 @@ export const IconChevronLeft = (p: P) => <I {...p}><path d="M15 18l-6-6 6-6" /><
 export const IconChevronRight = (p: P) => <I {...p}><path d="M9 18l6-6-6-6" /></I>;
 export const IconLink = (p: P) => <I {...p}><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" /><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></I>;
 export const IconMegaphone = (p: P) => <I {...p}><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M14 9a4 4 0 0 1 0 6M17 6a8 8 0 0 1 0 12" /></I>;
+export const IconWhatsapp = (p: P) => <I {...p}><path d="M21 12a9 9 0 0 1-13.3 7.9L3 21l1.1-4.6A9 9 0 1 1 21 12z" /><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1.2-1.4-1.9-.9-.9.9a4 4 0 0 1-2.5-2.5l.9-.9-.9-1.9z" /></I>;
 export const IconFacebook = (p: P) => <I {...p}><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" /></I>;
 export const IconInstagram = (p: P) => <I {...p}><rect x="2" y="2" width="20" height="20" rx="5" /><circle cx="12" cy="12" r="4" /><path d="M17.5 6.5h.01" /></I>;
 export const IconTikTok = (p: P) => <I {...p}><path d="M9 12a4 4 0 1 0 4 4V4c.5 2.5 2.5 4 5 4" /></I>;

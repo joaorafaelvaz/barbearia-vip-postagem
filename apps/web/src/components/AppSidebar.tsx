@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { IconAtSign, IconChart, IconDashboard, IconLogout, IconMegaphone, IconPlus, IconStore, IconUser, IconUsers } from "./Icons";
+import { IconAtSign, IconChart, IconDashboard, IconLogout, IconMegaphone, IconPlus, IconStore, IconUser, IconUsers, IconWhatsapp } from "./Icons";
 import { ThemeToggle } from "./ThemeToggle";
 import { Sidebar, SidebarBody, SidebarLink, type Links } from "./ui/sidebar";
 
@@ -22,7 +22,7 @@ export function AppSidebar({ orgName, email, name, roleLabel, isAdmin }: AppSide
     { label: "Analytics", href: "/analytics", icon: <IconChart /> },
     { label: "Perfis", href: "/perfis", icon: <IconAtSign /> },
     { label: "Unidades e contas", href: "/unidades", icon: <IconStore /> },
-    ...(isAdmin ? [{ label: "Usuários", href: "/usuarios", icon: <IconUsers /> }] : []),
+    ...(isAdmin ? [{ label: "Usuários", href: "/usuarios", icon: <IconUsers /> }, { label: "Avisos WhatsApp", href: "/avisos", icon: <IconWhatsapp /> }] : []),
     { label: "Minha conta", href: "/conta", icon: <IconUser /> },
   ];
   const initials = (name ?? email).split(/[\s@]+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
