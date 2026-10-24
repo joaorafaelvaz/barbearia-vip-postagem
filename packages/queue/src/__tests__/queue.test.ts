@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dequeuePublish, enqueuePublish, requeuePublish, type PublishQueueLike } from "../index.js";
+import { dequeueNotice, dequeuePublish, enqueueNotice, enqueuePublish, hasNoticeJob, requeuePublish, type PublishQueueLike } from "../index.js";
 
 function fakeQueue(initialState = "delayed") {
   const jobs = new Map<string, { data: unknown; opts: Record<string, unknown>; state: string }>();
@@ -68,5 +68,26 @@ describe("dequeue/requeue", () => {
     await requeuePublish(queue, "t1", new Date("2026-10-03T12:00:30Z"), now);
     expect(jobs.size).toBe(1);
     expect(jobs.get("post-target-t1")?.opts.delay).toBe(30_000);
+  });
+});
+
+describe("enqueueNotice", () => {
+  const now = new Date("2026-10-25T17:00:00Z");
+  const occ = new Date("2026-10-25T18:00:00Z");
+  it("jobId por aviso/ocorrência/tentativa, delay até a ocorrência, payload com ISO", async () => {
+    const { queue, jobs } = fakeQueue();
+    await enqueueNotice(queue, "n1", occ, 0, now);
+    const job = jobs.get("whatsapp-notice-n1-1792951200000-0");
+    expect(job?.opts.delay).toBe(3_600_000);
+    expect(job?.data).toEqual({ noticeId: "n1", occurrenceAt: "2026-10-25T18:00:00.000Z" });
+    expect(await hasNoticeJob(queue, "n1", occ, 0)).toBe(true);
+    expect(await hasNoticeJob(queue, "n1", occ, 1)).toBe(false);
+  });
+  it("runAt explícito (retentativa) e remoção", async () => {
+    const { queue, jobs } = fakeQueue();
+    await enqueueNotice(queue, "n1", occ, 1, now, new Date("2026-10-25T18:03:00Z"));
+    expect(jobs.get("whatsapp-notice-n1-1792951200000-1")?.opts.delay).toBe(3_780_000);
+    expect(await dequeueNotice(queue, "n1", occ, 1)).toBe(true);
+    expect(jobs.size).toBe(0);
   });
 });
