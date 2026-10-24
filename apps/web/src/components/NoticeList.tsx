@@ -50,10 +50,10 @@ export function NoticeList({ notices, unitNames }: { notices: NoticeRow[]; unitN
                     <td className="actions">
                       {n.state === "enviando" ? <em>enviando…</em> : (
                         <div className="row" style={{ justifyContent: "flex-end" }}>
-                          {n.state === "ativo" && <button className="btn small" disabled={busy === n.id} onClick={() => setState(n.id, "pausado")}>Pausar</button>}
-                          {n.state === "pausado" && <button className="btn small" disabled={busy === n.id} onClick={() => setState(n.id, "ativo")}>Retomar</button>}
+                          {n.state === "ativo" && <button type="button" className="btn small" disabled={busy === n.id} onClick={() => setState(n.id, "pausado")}>Pausar</button>}
+                          {n.state === "pausado" && <button type="button" className="btn small" disabled={busy === n.id} onClick={() => setState(n.id, "ativo")}>Retomar</button>}
                           <Link className="btn small" href={`/avisos?editar=${n.id}`}>Editar</Link>
-                          <button className="btn small danger" disabled={busy === n.id} onClick={() => setState(n.id, "cancelado")}><IconX size="sm" /> Cancelar</button>
+                          <button type="button" className="btn small danger" disabled={busy === n.id} onClick={() => setState(n.id, "cancelado")}><IconX size="sm" /> Cancelar</button>
                         </div>
                       )}
                     </td>

@@ -45,11 +45,13 @@ export function NoticeComposer({ units, hasFranchisor, canTest, aiAvailable, edi
 
   const available = useMemo(() => units.filter((u) => u.whatsappChatId), [units]);
   const count = todas ? available.length : [...unidades].filter((id) => available.some((u) => u.id === id)).length;
+  const diaMesOk = diaMes.trim().toLowerCase() === "ultimo" || (/^\d{1,2}$/.test(diaMes.trim()) && Number(diaMes) >= 1 && Number(diaMes) <= 31);
   const blocker =
     text.trim() === "" ? "Escreva o texto."
     : count === 0 && !franqueadora ? "Escolha ao menos um destino."
     : !when ? "Escolha data e hora."
     : tipo === "semanal" && dias.size === 0 ? "Marque ao menos um dia da semana."
+    : tipo === "mensal" && !diaMesOk ? 'Dia do mês: 1 a 31 ou "ultimo".'
     : null;
 
   function body() {
@@ -68,9 +70,14 @@ export function NoticeComposer({ units, hasFranchisor, canTest, aiAvailable, edi
       : kind === "test" ? ["/api/whatsapp-notices/test", "POST", { text }]
       : ["/api/whatsapp-notices/generate", "POST", { assunto, tom }];
     const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; text?: string };
+    const data = (await res.json().catch(() => ({}))) as { error?: string; text?: string; details?: { fieldErrors?: Record<string, string[]> } | null };
     setBusy(null);
-    if (!res.ok) { setMsg({ error: data.error ?? "Erro" }); return; }
+    if (!res.ok) {
+      // Erro de validação do zod vem como "Dados inválidos" + fieldErrors: mostra o primeiro campo, como o ChatIdField.
+      const field = Object.entries(data.details?.fieldErrors ?? {}).find(([, v]) => v.length > 0);
+      setMsg({ error: field ? `${field[0]}: ${field[1][0]}` : data.error ?? "Erro" });
+      return;
+    }
     if (kind === "ai") { setText(data.text ?? ""); setMsg({ ok: "Texto gerado. Revise antes de agendar." }); return; }
     if (kind === "test") { setMsg({ ok: "Teste enviado para o seu número." }); return; }
     setMsg({ ok: editing ? "Aviso atualizado." : "Aviso agendado." });
@@ -113,7 +120,8 @@ export function NoticeComposer({ units, hasFranchisor, canTest, aiAvailable, edi
             <div className="row">
               {units.map((u) => (
                 <label key={u.id} className={`chip ${unidades.has(u.id) ? "on" : ""}`} title={u.whatsappChatId ? u.whatsappChatId : "Sem grupo WhatsApp cadastrado"}>
-                  <input type="checkbox" checked={unidades.has(u.id)} disabled={!u.whatsappChatId} onChange={() => setUnidades((s) => toggle(s, u.id))} /> {u.name}
+                  {/* Sem grupo não dá para marcar; mas uma unidade já marcada que perdeu o grupo continua desmarcável. */}
+                  <input type="checkbox" checked={unidades.has(u.id)} disabled={!u.whatsappChatId && !unidades.has(u.id)} onChange={() => setUnidades((s) => toggle(s, u.id))} /> {u.name}
                 </label>
               ))}
             </div>

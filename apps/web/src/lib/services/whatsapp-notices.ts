@@ -1,5 +1,5 @@
 import type { WahaSenderLike } from "@fsp/connectors";
-import { NOTICE_TEXT_MAX, NOTICE_TIMEZONE, canTransition, localToUtc, nextOccurrence, resolveNoticeTargets, sameRecurrence, type NoticeRecurrence, type NoticeState, type NoticeTargets, type NoticeUnitChat } from "@fsp/core";
+import { NOTICE_TEXT_MAX, NOTICE_TIMEZONE, canTransition, localToUtc, nextOccurrence, resolveNoticeTargets, sameRecurrence, utcToLocal, type NoticeRecurrence, type NoticeState, type NoticeTargets, type NoticeUnitChat } from "@fsp/core";
 import type { Prisma, PrismaClient } from "@fsp/db";
 import { dequeueNotice, enqueueNotice, type NoticeQueueLike } from "@fsp/queue";
 import { z } from "zod";
@@ -46,6 +46,8 @@ export function parseNoticeInput(raw: unknown, now: Date = new Date(), opts: { p
   const targets: NoticeTargets = { unidades: [...new Set(input.targets.unidades)], todas: input.targets.todas, franqueadora: input.targets.franqueadora };
   if (targets.unidades.length === 0 && !targets.todas && !targets.franqueadora) throw new HttpError(400, "Escolha ao menos um destino.");
   const firstSendAt = localToUtc(input.firstSendLocal, NOTICE_TIMEZONE);
+  // Data impossível (31/02, 25:00...) passa no regex e "rola" para outro dia: o round-trip denuncia.
+  if (utcToLocal(firstSendAt, NOTICE_TIMEZONE) !== input.firstSendLocal) throw new HttpError(400, "Data/hora inválida.");
   const unchanged = opts.previousFirstSendAt !== undefined && opts.previousFirstSendAt.getTime() === firstSendAt.getTime();
   if (!unchanged && firstSendAt.getTime() < now.getTime() + 60_000) throw new HttpError(400, "A data/hora do primeiro envio precisa estar no futuro.");
   const recurrence = input.recurrence;
@@ -57,6 +59,7 @@ export function parseNoticeInput(raw: unknown, now: Date = new Date(), opts: { p
   let endAt: Date | null = null;
   if (input.endDate) {
     endAt = localToUtc(`${input.endDate}T23:59`, NOTICE_TIMEZONE);
+    if (utcToLocal(endAt, NOTICE_TIMEZONE).slice(0, 10) !== input.endDate) throw new HttpError(400, "Data final inválida.");
     if (endAt.getTime() < firstSendAt.getTime()) throw new HttpError(400, "A data final precisa ser depois do primeiro envio.");
   }
   return { text, targets, firstSendAt, recurrence, endAt };
@@ -69,9 +72,14 @@ interface CurrentNotice { state: NoticeState; firstSendAt: Date; recurrence: Not
  * pausado; uma ocorrência já vencida e não enviada é mantida se a regra não mudou (não pula o
  * envio atrasado); senão recalcula a partir de agora quando o primeiro envio ficou no passado.
  */
+/** Só `ativo`/`pausado` podem ser editados: `enviando` -> 409 (aguarde), concluído/cancelado -> 404 (não aparecem mais na tela). */
+export function assertEditable(state: NoticeState): void {
+  if (state === "enviando") throw new HttpError(409, "Este aviso está sendo enviado agora; aguarde e tente de novo.");
+  if (state !== "ativo" && state !== "pausado") throw new HttpError(404, "Aviso não encontrado.");
+}
+
 export function planUpdate(current: CurrentNotice, next: Pick<ParsedNotice, "firstSendAt" | "recurrence" | "endAt">, now: Date = new Date()): { state: NoticeState; nextRunAt: Date | null } {
-  if (current.state === "enviando") throw new HttpError(409, "Este aviso está sendo enviado agora; aguarde e tente de novo.");
-  if (current.state !== "ativo" && current.state !== "pausado") throw new HttpError(404, "Aviso não encontrado.");
+  assertEditable(current.state);
   // sameRecurrence, nunca JSON.stringify: o jsonb do Postgres devolve as chaves em outra ordem
   const sameRule = current.firstSendAt.getTime() === next.firstSendAt.getTime() && sameRecurrence(current.recurrence, next.recurrence);
   let nextRunAt: Date | null;
@@ -92,7 +100,21 @@ export function assertResolvableTargets(targets: NoticeTargets, units: readonly 
 }
 
 /** Fila própria dos avisos (`whatsapp-notices`), nunca a `publish`. */
-export interface NoticeDeps { prisma: PrismaClient; queue: NoticeQueueLike }
+export interface NoticeDeps { prisma: PrismaClient; queue: NoticeQueueLike; log?: (msg: string, meta?: Record<string, unknown>) => void }
+
+const defaultLog = (msg: string, meta?: Record<string, unknown>) => console.warn(JSON.stringify({ ts: new Date().toISOString(), msg, ...meta }));
+
+/**
+ * Operações de fila depois da escrita no banco nunca viram 500: o banco é a fonte da verdade e a
+ * reconciliação do worker (a cada 5 min) reenfileira o que falta / ignora job de ocorrência antiga.
+ */
+async function queueSafely(deps: NoticeDeps, op: string, meta: Record<string, unknown>, fn: () => Promise<unknown>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    (deps.log ?? defaultLog)("notice queue failed", { op, ...meta, error: err instanceof Error ? err.message : String(err) });
+  }
+}
 
 async function assertUnitsInOrg(prisma: PrismaClient, organizationId: string, unitIds: string[]) {
   if (unitIds.length === 0) return;
@@ -133,13 +155,14 @@ export async function createNotice(deps: NoticeDeps, organizationId: string, use
     select: noticeSelect,
   });
   // Enfileira fora da transação: se falhar, a reconciliação (5 min) recupera pelo banco.
-  if (nextRunAt) await enqueueNotice(deps.queue, notice.id, nextRunAt, 0);
+  if (nextRunAt) await queueSafely(deps, "enqueue", { noticeId: notice.id }, () => enqueueNotice(deps.queue, notice.id, nextRunAt, 0));
   return notice;
 }
 
 export async function updateNotice(deps: NoticeDeps, organizationId: string, noticeId: string, raw: unknown) {
   const current = await deps.prisma.whatsappNotice.findFirst({ where: { id: noticeId, organizationId } });
   if (!current) throw new HttpError(404, "Aviso não encontrado.");
+  assertEditable(current.state); // antes de validar a entrada: editar um cancelado/concluído é 404 mesmo com dados ruins
   const input = parseNoticeInput(raw, new Date(), { previousFirstSendAt: current.firstSendAt });
   await assertUnitsInOrg(deps.prisma, organizationId, input.targets.unidades);
   const chats = await loadChats(deps.prisma, organizationId);
@@ -147,13 +170,13 @@ export async function updateNotice(deps: NoticeDeps, organizationId: string, not
   const plan = planUpdate({ state: current.state, firstSendAt: current.firstSendAt, recurrence: current.recurrence as unknown as NoticeRecurrence, nextRunAt: current.nextRunAt }, input);
   // O estado é decidido no próprio UPDATE: se outra requisição pausou/retomou no meio, prevalece o banco.
   const r = await deps.prisma.whatsappNotice.updateMany({
-    where: { id: noticeId, state: { in: ["ativo", "pausado"] } },
+    where: { id: noticeId, organizationId, state: { in: ["ativo", "pausado"] } },
     data: { text: input.text, targets: json(input.targets), firstSendAt: input.firstSendAt, recurrence: json(input.recurrence), endAt: input.endAt, nextRunAt: plan.nextRunAt, consecutiveFailures: 0, ...(plan.state === "concluido" ? { state: "concluido" as const } : {}) },
   });
   if (r.count === 0) throw new HttpError(409, "Este aviso mudou de estado; recarregue a página.");
-  if (current.nextRunAt) await dequeueNotice(deps.queue, noticeId, current.nextRunAt, current.consecutiveFailures).catch(() => false);
+  if (current.nextRunAt) await queueSafely(deps, "dequeue", { noticeId }, () => dequeueNotice(deps.queue, noticeId, current.nextRunAt as Date, current.consecutiveFailures));
   const updated = await deps.prisma.whatsappNotice.findUniqueOrThrow({ where: { id: noticeId }, select: noticeSelect });
-  if (updated.state === "ativo" && updated.nextRunAt) await enqueueNotice(deps.queue, noticeId, updated.nextRunAt, 0);
+  if (updated.state === "ativo" && updated.nextRunAt) await queueSafely(deps, "enqueue", { noticeId }, () => enqueueNotice(deps.queue, noticeId, updated.nextRunAt as Date, 0));
   return updated;
 }
 
@@ -163,11 +186,12 @@ export async function changeNoticeState(deps: NoticeDeps, organizationId: string
   if (!current) throw new HttpError(404, "Aviso não encontrado.");
   if (!canTransition(current.state, to)) throw new HttpError(409, `Não é possível mudar de ${current.state} para ${to}.`);
   // Retomar zera o contador: senão um aviso pausado por 3 falhas pausa de novo na primeira falha
-  const r = await deps.prisma.whatsappNotice.updateMany({ where: { id: noticeId, state: current.state }, data: { state: to, ...(to === "ativo" ? { consecutiveFailures: 0 } : {}) } });
+  const r = await deps.prisma.whatsappNotice.updateMany({ where: { id: noticeId, organizationId, state: current.state }, data: { state: to, ...(to === "ativo" ? { consecutiveFailures: 0 } : {}) } });
   if (r.count === 0) throw new HttpError(409, "Este aviso mudou de estado; recarregue a página.");
-  if (current.nextRunAt) {
-    if (to === "ativo") await enqueueNotice(deps.queue, noticeId, current.nextRunAt, 0); // vencido? a regra das 2h decide no worker
-    else await dequeueNotice(deps.queue, noticeId, current.nextRunAt, current.consecutiveFailures).catch(() => false);
+  const nextRunAt = current.nextRunAt;
+  if (nextRunAt) {
+    if (to === "ativo") await queueSafely(deps, "enqueue", { noticeId, to }, () => enqueueNotice(deps.queue, noticeId, nextRunAt, 0)); // vencido? a regra das 2h decide no worker
+    else await queueSafely(deps, "dequeue", { noticeId, to }, () => dequeueNotice(deps.queue, noticeId, nextRunAt, current.consecutiveFailures));
   }
 }
 

@@ -1,6 +1,6 @@
 import { localToUtc } from "@fsp/core";
 import { describe, expect, it } from "vitest";
-import { assertResolvableTargets, parseNoticeInput, planUpdate, CHAT_ID_RE } from "./whatsapp-notices";
+import { assertResolvableTargets, changeNoticeState, createNotice, parseNoticeInput, planUpdate, updateNotice, CHAT_ID_RE } from "./whatsapp-notices";
 
 const sp = (l: string) => localToUtc(l, "America/Sao_Paulo");
 const now = sp("2026-10-23T10:00");
@@ -80,5 +80,63 @@ describe("CHAT_ID_RE", () => {
     expect(CHAT_ID_RE.test("554899161906-1529438950@g.us")).toBe(true);
     expect(CHAT_ID_RE.test("554899073477@c.us")).toBe(true);
     expect(CHAT_ID_RE.test("+55 48 9999-9999")).toBe(false);
+  });
+});
+
+describe("datas impossíveis (passam no regex, mas 'rolam' para outro dia)", () => {
+  it("31/02 no primeiro envio e 30/02 no fim -> 400", () => {
+    expect(() => parseNoticeInput({ ...base, firstSendLocal: "2026-02-31T10:00" }, now)).toThrow(expect.objectContaining({ status: 400, message: "Data/hora inválida." }));
+    expect(() => parseNoticeInput({ ...base, recurrence: { tipo: "diaria" }, endDate: "2027-02-30" }, now)).toThrow(/inválida/);
+    expect(parseNoticeInput({ ...base, recurrence: { tipo: "diaria" }, endDate: "2028-02-29" }, now).endAt).toEqual(sp("2028-02-29T23:59"));
+  });
+});
+
+/** Prisma falso mínimo para os fluxos de criar/editar/estado (sem banco). */
+function fakePrisma(notice: Record<string, unknown> | null) {
+  const calls: Array<{ op: string; args: unknown }> = [];
+  const prisma = {
+    unit: {
+      async count() { return 1; },
+      async findMany() { return [{ id: "u1", name: "A", whatsappChatId: "a@g.us" }]; },
+    },
+    organization: { async findUniqueOrThrow() { return { whatsappChatId: null }; } },
+    whatsappNotice: {
+      async findFirst() { return notice; },
+      async create(args: unknown) { calls.push({ op: "create", args }); return { id: "n1", state: "ativo", nextRunAt: sp("2026-12-01T15:00") }; },
+      async updateMany(args: unknown) { calls.push({ op: "updateMany", args }); return { count: 1 }; },
+      async findUniqueOrThrow() { return { ...notice, id: "n1", state: "ativo", nextRunAt: sp("2026-12-01T15:00") }; },
+    },
+  };
+  return { prisma: prisma as never, calls };
+}
+const brokenQueue = { async add() { throw new Error("ECONNREFUSED redis"); }, async getJob() { throw new Error("ECONNREFUSED redis"); } };
+const activeNotice = { id: "n1", organizationId: "o1", state: "ativo", firstSendAt: sp("2026-12-01T15:00"), recurrence: { tipo: "nenhuma" }, nextRunAt: sp("2026-12-01T15:00"), consecutiveFailures: 0 };
+
+describe("fila indisponível depois da escrita no banco não vira 500 (a reconciliação recupera)", () => {
+  it("createNotice devolve o aviso e loga 'notice queue failed'", async () => {
+    const { prisma } = fakePrisma(null);
+    const logs: string[] = [];
+    const notice = await createNotice({ prisma, queue: brokenQueue, log: (m) => { logs.push(m); } }, "o1", "me", base);
+    expect(notice.id).toBe("n1");
+    expect(logs).toEqual(["notice queue failed"]);
+  });
+  it("updateNotice e changeNoticeState também; o UPDATE filtra por organizationId", async () => {
+    const { prisma, calls } = fakePrisma(activeNotice);
+    const logs: string[] = [];
+    await updateNotice({ prisma, queue: brokenQueue, log: (m) => { logs.push(m); } }, "o1", "n1", base);
+    await changeNoticeState({ prisma, queue: brokenQueue, log: (m) => { logs.push(m); } }, "o1", "n1", "pausado");
+    expect(logs).toEqual(["notice queue failed", "notice queue failed", "notice queue failed"]); // dequeue + enqueue na edição, dequeue ao pausar
+    for (const c of calls.filter((c) => c.op === "updateMany")) expect((c.args as { where: { organizationId?: string } }).where.organizationId).toBe("o1");
+  });
+});
+
+describe("updateNotice checa o estado antes de validar a entrada", () => {
+  it("cancelado com dados inválidos -> 404 (não 400)", async () => {
+    const { prisma } = fakePrisma({ ...activeNotice, state: "cancelado" });
+    await expect(updateNotice({ prisma, queue: brokenQueue }, "o1", "n1", { ...base, text: "" })).rejects.toMatchObject({ status: 404 });
+  });
+  it("enviando -> 409 antes de validar", async () => {
+    const { prisma } = fakePrisma({ ...activeNotice, state: "enviando" });
+    await expect(updateNotice({ prisma, queue: brokenQueue }, "o1", "n1", { nonsense: true })).rejects.toMatchObject({ status: 409 });
   });
 });
