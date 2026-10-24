@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { dequeueNotice, dequeuePublish, enqueueNotice, enqueuePublish, hasNoticeJob, requeuePublish, type PublishQueueLike } from "../index.js";
+import { dequeueNotice, dequeuePublish, enqueueNotice, enqueuePublish, hasNoticeJob, requeuePublish, type PublishJobData, type QueueLike, type WhatsappNoticeJobData } from "../index.js";
 
 function fakeQueue(initialState = "delayed") {
   const jobs = new Map<string, { data: unknown; opts: Record<string, unknown>; state: string }>();
-  const queue: PublishQueueLike = {
+  // Serve às duas filas: métodos são bivariantes, então o fake com a união é aceito por PublishQueueLike e NoticeQueueLike.
+  const queue: QueueLike<PublishJobData | WhatsappNoticeJobData> = {
     async add(_name, data, opts) {
       const id = String(opts?.jobId);
       if (jobs.has(id)) return jobs.get(id); // BullMQ ignora add com jobId repetido

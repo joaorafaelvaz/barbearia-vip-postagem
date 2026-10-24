@@ -322,13 +322,22 @@ export function prismaNoticeRepository(prisma: PrismaClient): NoticeRepository {
       return r.count === 1;
     },
     async listStaleSending(before) {
-      return prisma.whatsappNotice.findMany({ where: { state: "enviando", OR: [{ sendingStartedAt: null }, { sendingStartedAt: { lt: before } }] }, select: { id: true }, take: 500 });
+      return prisma.whatsappNotice.findMany({
+        where: { state: "enviando", OR: [{ sendingStartedAt: null }, { sendingStartedAt: { lt: before } }] },
+        select: { id: true, nextRunAt: true, consecutiveFailures: true },
+        take: 500,
+      });
     },
     async touchSending(id) {
       await prisma.whatsappNotice.updateMany({ where: { id, state: "enviando" }, data: { sendingStartedAt: new Date() } });
     },
-    async releaseStale(id) {
-      await prisma.whatsappNotice.updateMany({ where: { id, state: "enviando" }, data: { state: "ativo", sendingStartedAt: null } });
+    async releaseStale(id, before) {
+      // Repete a condição do heartbeat: se o ciclo renovou sendingStartedAt entre listar e soltar, não libera.
+      const r = await prisma.whatsappNotice.updateMany({
+        where: { id, state: "enviando", OR: [{ sendingStartedAt: null }, { sendingStartedAt: { lt: before } }] },
+        data: { state: "ativo", sendingStartedAt: null },
+      });
+      return r.count === 1;
     },
     async listActive(updatedBefore) {
       const rows = await prisma.whatsappNotice.findMany({ where: { state: "ativo", nextRunAt: { not: null }, updatedAt: { lt: updatedBefore } }, select: { id: true, nextRunAt: true, consecutiveFailures: true }, orderBy: { nextRunAt: "asc" }, take: 2000 });

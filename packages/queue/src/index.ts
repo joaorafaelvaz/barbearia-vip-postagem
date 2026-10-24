@@ -1,8 +1,8 @@
-import { CLEANUP_EVERY_MS, CLEANUP_JOB_NAME, CLEANUP_SCHEDULER_ID, RECONCILE_EVERY_MS, RECONCILE_JOB_NAME, RECONCILE_SCHEDULER_ID, IMPORT_EVERY_MS, IMPORT_JOB_NAME, IMPORT_SCHEDULER_ID, METRICS_EVERY_MS, METRICS_JOB_NAME, METRICS_SCHEDULER_ID, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, WHATSAPP_NOTICE_JOB_NAME, delayUntil, noticeJobId, publishJobId, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData, type WhatsappNoticeJobData } from "@fsp/core";
+import { CLEANUP_EVERY_MS, CLEANUP_JOB_NAME, CLEANUP_SCHEDULER_ID, RECONCILE_EVERY_MS, RECONCILE_JOB_NAME, RECONCILE_SCHEDULER_ID, IMPORT_EVERY_MS, IMPORT_JOB_NAME, IMPORT_SCHEDULER_ID, METRICS_EVERY_MS, METRICS_JOB_NAME, METRICS_SCHEDULER_ID, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, WHATSAPP_NOTICES_QUEUE_NAME, WHATSAPP_NOTICE_JOB_NAME, delayUntil, noticeJobId, publishJobId, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData, type WhatsappNoticeJobData } from "@fsp/core";
 import { Queue, type JobsOptions } from "bullmq";
 import { Redis } from "ioredis";
 
-export { PUBLISH_QUEUE_NAME } from "@fsp/core";
+export { PUBLISH_QUEUE_NAME, WHATSAPP_NOTICES_QUEUE_NAME } from "@fsp/core";
 export type { PublishJobData, MetricsJobData, ImportJobData, PrepareMediaJobData, WhatsappNoticeJobData } from "@fsp/core";
 export { METRICS_JOB_NAME, IMPORT_JOB_NAME, RECONCILE_JOB_NAME, PREPARE_MEDIA_JOB_NAME, CLEANUP_JOB_NAME, WHATSAPP_NOTICE_JOB_NAME } from "@fsp/core";
 
@@ -10,13 +10,18 @@ export function createRedisConnection(url: string = process.env.REDIS_URL ?? "re
   return new Redis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
 }
 
-/** Interface mínima da fila para permitir fakes em testes. */
-export interface PublishQueueLike {
-  add(name: string, data: PublishJobData | WhatsappNoticeJobData, opts?: JobsOptions): Promise<unknown>;
+/** Interface mínima de uma fila para permitir fakes em testes. */
+export interface QueueLike<TData> {
+  add(name: string, data: TData, opts?: JobsOptions): Promise<unknown>;
   getJob(jobId: string): Promise<{ remove(): Promise<void>; getState(): Promise<string> } | undefined | null>;
 }
 
-export type AppJobData = PublishJobData | MetricsJobData | ImportJobData | PrepareMediaJobData | WhatsappNoticeJobData;
+/** Fila "publish" (publicações, métricas, importação, mídia, reconciliação). */
+export type PublishQueueLike = QueueLike<PublishJobData>;
+/** Fila "whatsapp-notices" (só o job `whatsapp-notice`, worker com concorrência 1). */
+export type NoticeQueueLike = QueueLike<WhatsappNoticeJobData>;
+
+export type AppJobData = PublishJobData | MetricsJobData | ImportJobData | PrepareMediaJobData;
 
 export function createPublishQueue(connection: Redis): Queue<AppJobData> {
   return new Queue<AppJobData>(PUBLISH_QUEUE_NAME, {
@@ -26,6 +31,11 @@ export function createPublishQueue(connection: Redis): Queue<AppJobData> {
       removeOnFail: { age: 30 * 24 * 3600 },
     },
   });
+}
+
+/** Fila própria dos avisos WhatsApp, separada da "publish" para o worker rodar um ciclo por vez. */
+export function createNoticeQueue(connection: Redis): Queue<WhatsappNoticeJobData> {
+  return new Queue<WhatsappNoticeJobData>(WHATSAPP_NOTICES_QUEUE_NAME, { connection });
 }
 
 /**
@@ -113,13 +123,13 @@ export async function ensureCleanupScheduler(queue: Queue<AppJobData>): Promise<
  * primeira vez): BullMQ ignora `add` com jobId repetido, então cada retentativa tem id próprio.
  * `runAt` padrão = a própria ocorrência; a retentativa passa agora + 60 s.
  */
-export async function enqueueNotice(queue: PublishQueueLike, noticeId: string, occurrenceAt: Date, attempt: number, now: Date = new Date(), runAt: Date = occurrenceAt): Promise<void> {
+export async function enqueueNotice(queue: NoticeQueueLike, noticeId: string, occurrenceAt: Date, attempt: number, now: Date = new Date(), runAt: Date = occurrenceAt): Promise<void> {
   const data: WhatsappNoticeJobData = { noticeId, occurrenceAt: occurrenceAt.toISOString() };
   await queue.add(WHATSAPP_NOTICE_JOB_NAME, data, { jobId: noticeJobId(noticeId, occurrenceAt, attempt), delay: delayUntil(runAt, now), attempts: 1, removeOnComplete: true, removeOnFail: true });
 }
 
 /** Remove o job pendente de uma ocorrência (pausar/cancelar/editar). Não remove job ativo. */
-export async function dequeueNotice(queue: PublishQueueLike, noticeId: string, occurrenceAt: Date, attempt: number): Promise<boolean> {
+export async function dequeueNotice(queue: NoticeQueueLike, noticeId: string, occurrenceAt: Date, attempt: number): Promise<boolean> {
   const job = await queue.getJob(noticeJobId(noticeId, occurrenceAt, attempt));
   if (!job) return false;
   if ((await job.getState()) === "active") return false;
@@ -127,6 +137,6 @@ export async function dequeueNotice(queue: PublishQueueLike, noticeId: string, o
   return true;
 }
 
-export async function hasNoticeJob(queue: PublishQueueLike, noticeId: string, occurrenceAt: Date, attempt: number): Promise<boolean> {
+export async function hasNoticeJob(queue: NoticeQueueLike, noticeId: string, occurrenceAt: Date, attempt: number): Promise<boolean> {
   return Boolean(await queue.getJob(noticeJobId(noticeId, occurrenceAt, attempt)));
 }

@@ -18,12 +18,12 @@ Fora de escopo: personalização por unidade, mídia nos avisos, relatórios por
 
 ```
 navegador ──HTTPS──▶ nginx ──▶ apps/web (Next.js 15, /avisos + /api/whatsapp-notices/*)
-                                   │ Prisma                     │ BullMQ (fila "publish")
+                                   │ Prisma                     │ BullMQ (fila própria "whatsapp-notices")
                                    ▼                            ▼
-                              PostgreSQL ◀──────────────── apps/worker
+                              PostgreSQL ◀──────────────── apps/worker (2º Worker, concorrência 1)
                          WhatsappNotice / WhatsappDelivery   job "whatsapp-notice" (1 por ocorrência)
-                         Unit.whatsappChatId                 + reconcileNotices (a cada 5 min, junto do
-                         Organization.whatsappChatId           reconcile de publicações)
+                         Unit.whatsappChatId                 + reconcileNotices (a cada 5 min, dentro do
+                         Organization.whatsappChatId           reconcile-targets da fila "publish")
                          User.whatsappChatId                         │
                                                                      ▼ POST /api/sendText (X-Api-Key)
                                                                    WAHA ──▶ WhatsApp
@@ -34,7 +34,8 @@ apps/web ── WAHA direto ── "Enviar teste para mim" (imediato, só para o
 Diferenças deliberadas em relação ao `daily` (job de 1 em 1 minuto varrendo o SQLite):
 
 - **Um job BullMQ por ocorrência**, com `delay` até o horário e **jobId determinístico** `whatsapp-notice-<noticeId>-<occurrenceAt ms>-<tentativa>` — mesmo padrão de `post-target-<id>` (ADR 0001). A "tentativa" é o valor de `consecutiveFailures` no momento do enfileiramento (0, 1 ou 2): BullMQ ignora `add` com jobId repetido, então a retentativa do minuto seguinte precisa de um id novo; como 3 falhas pausam o aviso, o conjunto de ids é finito.
-- **Reconciliação a cada 5 min** (dentro do job `reconcile-targets` já existente, em `apps/worker/src/main.ts`): (0) `enviando` há mais de 10 min volta a `ativo` (worker caiu no meio do envio); (1) todo aviso `ativo` com `nextRunAt` e sem job na fila é reenfileirado (Redis recriado, migração de servidor). Equivale aos passos 0–1 do job do `daily`.
+- **Fila própria `whatsapp-notices`** (constante `WHATSAPP_NOTICES_QUEUE_NAME` ao lado de `PUBLISH_QUEUE_NAME`), consumida por um segundo `Worker` em `apps/worker/src/main.ts` com **concorrência 1**: um ciclo de envio por vez, como o job único do `daily`, sem rajadas no WAHA e sem disputar vagas com as publicações (a fila `publish` mantém a sua concorrência e não despacha avisos). `enqueueNotice`/`dequeueNotice`/`hasNoticeJob` e `reconcileNotices` operam nessa fila; jobIds determinísticos, `delayUntil` e `removeOnComplete/Fail` iguais. O desligamento fecha os dois workers e as duas filas.
+- **Reconciliação a cada 5 min** (dentro do job `reconcile-targets` já existente, em `apps/worker/src/main.ts`, com `try/catch` próprio para uma falha dos avisos não invalidar a das publicações): (0) `enviando` sem heartbeat há mais de 10 min volta a `ativo` (worker caiu no meio do envio) **e é reenfileirado na mesma passada, para já** — soltar atualiza `updatedAt`, então a carência do passo seguinte não o veria; `releaseStale` repete a condição do heartbeat (`sendingStartedAt` null ou `< agora − 10 min`) para não liberar um ciclo que renovou a reserva entre listar e soltar; (1) todo aviso `ativo` com `nextRunAt` e sem job na fila é reenfileirado (Redis recriado, migração de servidor). Equivale aos passos 0–1 do job do `daily`.
 - **Multi-tenant**: `organizationId` em `WhatsappNotice` e `WhatsappDelivery`; toda consulta da camada web filtra pela sessão, como `Post`.
 - **Destinos resolvidos no envio** a partir do banco (`Unit.whatsappChatId`, `Organization.whatsappChatId`), não de `unit_groups.json`.
 
@@ -242,13 +243,13 @@ Importação única dos grupos: `pnpm --filter @fsp/db import:whatsapp-groups --
 ## 10. Erros e observabilidade
 
 - Web: `route()` converte `HttpError`/`ZodError` em JSON com status; stack trace só no console do container.
-- Worker: `log("notice sent"|"notice retry"|"notice paused"|"notice missed"|"notice skipped", { noticeId, occurrenceAt, ... })` no mesmo formato JSON de `processTarget`; `reconcileNotices` loga `{ staleReleased, requeued }` quando > 0. Falhas por destino ficam em `WhatsappDelivery.error` ("WAHA retornou falha", "atraso > 2h").
+- Worker: `log("notice sent"|"notice retry"|"notice paused"|"notice missed"|"notice skipped"|"notice cancelled during send"|"notice error", { noticeId, occurrenceAt, ... })` no mesmo formato JSON de `processTarget` — `notice skipped` sempre com `reason` ("aviso inexistente", "não reservado", "estado mudou durante o envio", "falha ao fechar o ciclo"); um aviso pausado/cancelado no meio do envio não loga `notice sent` nem enfileira a próxima ocorrência. `reconcileNotices` loga `notice released` por aviso solto e `{ staleReleased, requeued }` quando > 0; `main.ts` loga `reconcile notices failed` / `startup reconcile failed` sem derrubar o worker. Falhas por destino ficam em `WhatsappDelivery.error`: `WahaClient.sendText` devolve `{ ok: false, error }` com o status HTTP e o começo do corpo ("WAHA 401: {...}") ou o erro de rede ("WAHA: fetch failed"); "WAHA_URL não configurada"; "atraso > 2h".
 - Nunca logar `WAHA_API_KEY`, `ANTHROPIC_API_KEY` nem o texto completo (só no banco).
 
 ## 11. Testes
 
 - `packages/core`: `nextOccurrence` (5 casos do `daily` 1:1), `resolveNoticeTargets` (dedup, ordem, franqueadora, unidades sem chat), `noticeJobId`, `canTransition`, `normalizeUnitName`.
-- `packages/connectors`: `WahaClient.sendText` — payload/headers exatos, `true` em 2xx, `false` após 2 tentativas (sem lançar), header `X-Api-Key` só com chave.
+- `packages/connectors`: `WahaClient.sendText` — payload/headers exatos, `{ ok: true }` em 2xx, `{ ok: false, error: "WAHA <status>: ..." }` após 2 tentativas (sem lançar), header `X-Api-Key` só com chave.
 - `apps/worker`: `processNotice` com fila/repo/sender falsos — envia vencido e avança; > 2 h → `perdido`; sucesso parcial = ciclo ok; 3 falhas pausam sem avançar (ids de tentativa 1, 2 enfileirados); retentativa não reenvia a quem já recebeu; reserva falha → `skipped`; sem destinos → pausado com linha de sistema; pausa de 1,5 s só **entre** envios (2 destinos → 1 `sleep`); heartbeat impede soltar um ciclo vivo; carência de 2 min não atropela uma retentativa recém-enfileirada. `reconcileNotices`: solta presos, reenfileira sem job (respeitando `updatedAt < agora − OVERDUE_GRACE_MS`), nada a fazer.
 - `packages/core`: `sameRecurrence` com chaves/dias em outra ordem (jsonb); `apps/web`: `planUpdate` com recorrência vinda do jsonb reordenada; `assertResolvableTargets` (≥ 1 destino resolvido).
 - `apps/web`: `whatsapp-notices.test.ts` (schema/validações, `planUpdate` da edição — pausado preservado, ocorrência vencida mantida, 409 em `enviando`), `whatsapp-ai.test.ts` (parâmetros exatos da chamada, recusa → erro amigável, sem chave → 503), `authz.test.ts` (`requireAdmin` lança 403 para MANAGER).
@@ -259,6 +260,8 @@ Importação única dos grupos: `pnpm --filter @fsp/db import:whatsapp-groups --
 
 - Fuso do agendamento: `America/Sao_Paulo` para toda a rede (igual ao `daily`), **não** `Unit.timezone`.
 - Um job por ocorrência + reconciliação (padrão do repo), em vez de varredura por minuto; jobId com sufixo de tentativa por causa do `add` idempotente do BullMQ.
+- Fila própria `whatsapp-notices` com um segundo `Worker` de concorrência 1 (um ciclo por vez, como o job único do `daily`), em vez de compartilhar a fila `publish` e sua concorrência: evita rajadas no WAHA e ciclos concorrentes; a reconciliação continua acoplada ao `reconcile-targets` da fila `publish`.
+- `enviando` preso é solto **e reenfileirado na mesma passada** da reconciliação (não espera a carência de 2 min, que `releaseStale` tornaria inútil ao tocar `updatedAt`).
 - Estados e status mantidos em português (`ativo|pausado|enviando|concluido|cancelado`, `enviado|falhou|perdido|pausado`) e JSONs com as chaves do `daily`, para a migração mental da franqueadora ser nula; o resto do schema em inglês/camelCase como o repo.
 - Reconciliação acoplada ao job `reconcile-targets` existente (sem novo scheduler); heartbeat em `sendingStartedAt` e carência `OVERDUE_GRACE_MS` para não disputar com um ciclo vivo nem com um job recém-enfileirado.
 - **Um** `whatsappChatId` por unidade e **um** grupo da franqueadora (o `daily` aceita listas): desvio consciente, coberto pelo aviso do script de importação; se um dia uma unidade precisar de dois grupos, trocar a coluna por uma tabela `UnitWhatsappChat`.

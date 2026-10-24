@@ -3,9 +3,9 @@ import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
 import { WahaClient, createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken, refreshTikTokToken, type ConnectorOptions } from "@fsp/connectors";
-import { CLEANUP_JOB_NAME, DEFAULT_MEDIA_RETENTION_DAYS, IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, WHATSAPP_NOTICE_JOB_NAME, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData, type WhatsappNoticeJobData } from "@fsp/core";
+import { CLEANUP_JOB_NAME, DEFAULT_MEDIA_RETENTION_DAYS, IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, WHATSAPP_NOTICES_QUEUE_NAME, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData, type WhatsappNoticeJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
-import { createPublishQueue, createRedisConnection, ensureCleanupScheduler, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
+import { createNoticeQueue, createPublishQueue, createRedisConnection, ensureCleanupScheduler, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
 import { Worker } from "bullmq";
 import { cleanupMedia } from "./cleanup.js";
 import { importPosts } from "./imports.js";
@@ -29,6 +29,7 @@ async function main(): Promise<void> {
   const prisma = getPrisma();
   const connection = createRedisConnection();
   const queue = createPublishQueue(connection);
+  const noticeQueue = createNoticeQueue(connection);
   const cipher = TokenCipher.fromEnv();
 
   const googleCfg = {
@@ -90,11 +91,14 @@ async function main(): Promise<void> {
       }
       if (job.name === RECONCILE_JOB_NAME) {
         const targets = await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
-        const notices = await reconcileNotices({ repo: noticeRepo, queue, log: deps.log });
+        // Uma falha na reconciliação dos avisos não pode invalidar a das publicações, que já terminou.
+        let notices: Awaited<ReturnType<typeof reconcileNotices>> | null = null;
+        try {
+          notices = await reconcileNotices({ repo: noticeRepo, queue: noticeQueue, log: deps.log });
+        } catch (err) {
+          log("reconcile notices failed", { error: err instanceof Error ? err.message : String(err) });
+        }
         return { targets, notices };
-      }
-      if (job.name === WHATSAPP_NOTICE_JOB_NAME) {
-        return processNotice({ repo: noticeRepo, queue, sender: waha, log: deps.log }, job.data as WhatsappNoticeJobData);
       }
       if (job.name === PREPARE_MEDIA_JOB_NAME) {
         const mediaId = (job.data as PrepareMediaJobData).mediaId;
@@ -149,6 +153,18 @@ async function main(): Promise<void> {
   });
   worker.on("error", (err) => console.error("worker error", err.message));
 
+  // Fila própria dos avisos com concorrência 1: um ciclo de envio por vez (como o job único do daily),
+  // sem rajadas no WAHA e sem disputar vagas com as publicações.
+  const noticeWorker = new Worker<WhatsappNoticeJobData>(
+    WHATSAPP_NOTICES_QUEUE_NAME,
+    async (job) => processNotice({ repo: noticeRepo, queue: noticeQueue, sender: waha, log: deps.log }, job.data),
+    { connection, concurrency: 1 },
+  );
+  noticeWorker.on("failed", (job, err) => {
+    console.error(JSON.stringify({ ts: new Date().toISOString(), msg: "notice job failed", jobId: job?.id, error: err.message }));
+  });
+  noticeWorker.on("error", (err) => console.error("notice worker error", err.message));
+
   await ensureMetricsScheduler(queue);
   await ensureImportScheduler(queue);
   await ensureReconcileScheduler(queue);
@@ -157,16 +173,16 @@ async function main(): Promise<void> {
   // Uma falha aqui (banco ainda subindo, migration atrasada) não derruba o worker; o agendador de 5 min repete.
   try {
     await reconcileTargets({ repo: reconcileRepo, queue, log: deps.log });
-    await reconcileNotices({ repo: noticeRepo, queue, log: deps.log });
+    await reconcileNotices({ repo: noticeRepo, queue: noticeQueue, log: deps.log });
   } catch (err) {
     log("startup reconcile failed", { error: err instanceof Error ? err.message : String(err) });
   }
-  console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, metricsScheduler: "6h", uploads: process.env.S3_BUCKET ? "s3" : uploadsDir() }));
+  console.log(JSON.stringify({ ts: new Date().toISOString(), msg: "worker started", queue: PUBLISH_QUEUE_NAME, concurrency, noticeQueue: WHATSAPP_NOTICES_QUEUE_NAME, noticeConcurrency: 1, metricsScheduler: "6h", uploads: process.env.S3_BUCKET ? "s3" : uploadsDir() }));
 
   const shutdown = async () => {
     console.log("shutting down worker...");
-    await worker.close();
-    await queue.close();
+    await Promise.all([worker.close(), noticeWorker.close()]);
+    await Promise.all([queue.close(), noticeQueue.close()]);
     await prisma.$disconnect();
     connection.disconnect();
     process.exit(0);

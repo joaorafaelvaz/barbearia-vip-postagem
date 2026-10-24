@@ -1,6 +1,8 @@
 /** Regras puras de agendamento compartilhadas entre web (enfileira) e worker (processa). */
 
 export const PUBLISH_QUEUE_NAME = "publish";
+/** Fila própria dos avisos WhatsApp: worker com concorrência 1 (um ciclo por vez, sem rajadas no WAHA). */
+export const WHATSAPP_NOTICES_QUEUE_NAME = "whatsapp-notices";
 
 export const MAX_ATTEMPTS = 5;
 
