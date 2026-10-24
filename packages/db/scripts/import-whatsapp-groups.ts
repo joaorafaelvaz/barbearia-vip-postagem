@@ -1,10 +1,11 @@
 /**
  * Importa os grupos WhatsApp do daily (config/unit_groups.json) para Unit.whatsappChatId,
- * casando `units[*].nome` com Unit.name sem acentos/caixa. Uso:
+ * casando `units[*].nome` ("Cidade - Bairro") com Unit.name ("UF - Cidade - Bairro" ou só "UF - Cidade"):
+ * ignora o estado, acentos e caixa; quando o Publicador só tem a cidade, casa por ela se for única nos dois lados. Uso:
  *   pnpm --filter @fsp/db import:whatsapp-groups -- <caminho/unit_groups.json> [--org <organizationId>] [--force]
  * Sem --force, unidades que já têm whatsappChatId são puladas. Nomes não casados são listados dos dois lados.
  */
-import { normalizeUnitName } from "@fsp/core";
+import { matchUnitNames } from "@fsp/core";
 import { PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
 
@@ -37,14 +38,14 @@ async function main() {
   const org = orgs[0]!;
   if (!organizationId) console.log(`Única organização do banco, usada automaticamente: ${org.name} (${org.id})`);
   const units = await prisma.unit.findMany({ where: { organizationId: org.id }, select: { id: true, name: true, whatsappChatId: true } });
-  // Nomes que colidem depois de normalizados são ambíguos: ficam de fora em vez de casar silenciosamente com o último.
-  const byKey = new Map<string, (typeof units)[number]>();
-  const ambiguous = new Set<string>();
+  // Nomes iguais no Publicador são ambíguos: ficam de fora em vez de casar silenciosamente com o último.
+  const byName = new Map<string, (typeof units)[number]>();
+  const dupNames = new Set<string>();
   for (const u of units) {
-    const key = normalizeUnitName(u.name);
-    if (byKey.has(key)) ambiguous.add(key);
-    else byKey.set(key, u);
+    if (byName.has(u.name)) dupNames.add(u.name);
+    else byName.set(u.name, u);
   }
+  const matches = matchUnitNames(units.map((u) => u.name), Object.values(daily.units).map((du) => du.nome));
 
   const matched: string[] = [], skipped: string[] = [], unmatched: string[] = [];
   const used = new Set<string>();
@@ -54,10 +55,11 @@ async function main() {
     const chats = [du.chat_id, ...(du.chat_ids ?? [])].filter((c): c is string => Boolean(c));
     const chat = chats[0];
     if (chats.length > 1) console.warn(`AVISO: #${erpId} ${du.nome} tem ${chats.length} chats no daily (${chats.join(", ")}); só o primeiro é importado.`);
-    const key = normalizeUnitName(du.nome);
-    const unit = ambiguous.has(key) ? undefined : byKey.get(key);
+    const m = matches.get(du.nome) ?? { kind: "none" as const };
+    const isAmbiguous = m.kind === "ambiguous" || (m.kind === "match" && dupNames.has(m.name));
+    const unit = m.kind === "match" && !isAmbiguous ? byName.get(m.name) : undefined;
     if (!unit || !chat) {
-      const why = !chat ? " (sem chat_id)" : ambiguous.has(key) ? " (nome ambíguo no Publicador)" : "";
+      const why = !chat ? " (sem chat_id)" : isAmbiguous ? " (nome ambíguo no Publicador)" : "";
       unmatched.push(`#${erpId} ${du.nome}${why}`);
       continue;
     }
@@ -67,7 +69,7 @@ async function main() {
     unit.whatsappChatId = chat; // uma segunda entrada do daily para a mesma unidade não sobrescreve sem --force
     matched.push(`${unit.name} <- ${chat}`);
   }
-  const leftover = units.filter((u) => !used.has(u.id)).map((u) => `${u.name}${ambiguous.has(normalizeUnitName(u.name)) ? " (nome ambíguo)" : ""}`);
+  const leftover = units.filter((u) => !used.has(u.id)).map((u) => `${u.name}${dupNames.has(u.name) ? " (nome ambíguo)" : ""}`);
   console.log(`Organização: ${org.name}`);
   console.log(`\nPreenchidas (${matched.length}):\n  ${matched.join("\n  ") || "-"}`);
   console.log(`\nPuladas, já tinham chat (${skipped.length}):\n  ${skipped.join("\n  ") || "-"}`);

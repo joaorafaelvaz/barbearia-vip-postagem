@@ -113,6 +113,49 @@ export function normalizeUnitName(name: string): string {
   return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Chaves de casamento entre o nome de uma unidade no Publicador ("UF - Cidade - Bairro" ou só "UF - Cidade")
+ * e no daily ("Cidade - Bairro"). O prefixo de estado (duas letras + hífen) é descartado.
+ */
+export function unitNameKey(name: string): { full: string; city: string; cityOnly: boolean } {
+  const stripped = normalizeUnitName(name).replace(/^[a-z]{2}\s*-\s*/, "");
+  const parts = stripped.split(/\s*-\s*/).filter(Boolean);
+  const city = parts[0] ?? stripped;
+  return { full: parts.join(" - "), city, cityOnly: parts.length === 1 };
+}
+
+export type UnitNameMatch = { kind: "match"; name: string } | { kind: "none" } | { kind: "ambiguous" };
+
+/**
+ * Casa cada nome do daily com um nome do Publicador: primeiro pelo nome completo sem o prefixo de estado;
+ * depois, quando o Publicador só tem a cidade, pela cidade — mas só se ela for única nos DOIS lados.
+ * Qualquer colisão vira "ambiguous" em vez de casar silenciosamente.
+ */
+export function matchUnitNames(publicadorNames: readonly string[], dailyNames: readonly string[]): Map<string, UnitNameMatch> {
+  const byFull = new Map<string, string[]>();
+  const byCity = new Map<string, string[]>();
+  for (const n of publicadorNames) {
+    const k = unitNameKey(n);
+    byFull.set(k.full, [...(byFull.get(k.full) ?? []), n]);
+    if (k.cityOnly) byCity.set(k.city, [...(byCity.get(k.city) ?? []), n]);
+  }
+  const dailyPerCity = new Map<string, number>();
+  for (const n of dailyNames) {
+    const { city } = unitNameKey(n);
+    dailyPerCity.set(city, (dailyPerCity.get(city) ?? 0) + 1);
+  }
+  const out = new Map<string, UnitNameMatch>();
+  for (const n of dailyNames) {
+    const k = unitNameKey(n);
+    const full = byFull.get(k.full);
+    if (full) { out.set(n, full.length === 1 ? { kind: "match", name: full[0]! } : { kind: "ambiguous" }); continue; }
+    const city = byCity.get(k.city);
+    if (!city) { out.set(n, { kind: "none" }); continue; }
+    out.set(n, city.length === 1 && dailyPerCity.get(k.city) === 1 ? { kind: "match", name: city[0]! } : { kind: "ambiguous" });
+  }
+  return out;
+}
+
 interface CivilDate { y: number; m: number; d: number }
 
 function civilOf(date: Date): { day: CivilDate; time: string } {

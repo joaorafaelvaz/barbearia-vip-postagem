@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { localToUtc } from "../timezone.js";
-import { canTransition, nextOccurrence, noticeJobId, normalizeUnitName, resolveNoticeTargets, sameRecurrence } from "../whatsapp-notices.js";
+import { canTransition, matchUnitNames, nextOccurrence, noticeJobId, normalizeUnitName, resolveNoticeTargets, sameRecurrence, unitNameKey } from "../whatsapp-notices.js";
 
 /** Horário de parede em São Paulo -> Date UTC (mesmo `dt()` dos testes do daily). */
 const sp = (local: string) => localToUtc(local, "America/Sao_Paulo");
@@ -116,5 +116,41 @@ describe("nextOccurrence (portado de daily tests/test_agendamentos.py)", () => {
     }
     expect(() => nextOccurrence(null, first, { tipo: "mensal", dia: "ultimo" }, null)).not.toThrow();
     expect(() => nextOccurrence(null, first, { tipo: "mensal", dia: 1 }, null)).not.toThrow();
+  });
+});
+
+describe("unitNameKey / matchUnitNames", () => {
+  it("descarta o prefixo de estado e separa cidade de bairro", () => {
+    expect(unitNameKey("SC - Florianópolis - Santa Mônica")).toEqual({ full: "florianopolis - santa monica", city: "florianopolis", cityOnly: false });
+    expect(unitNameKey("MG - Ubá")).toEqual({ full: "uba", city: "uba", cityOnly: true });
+    expect(unitNameKey("Ubá - Centro")).toEqual({ full: "uba - centro", city: "uba", cityOnly: false });
+  });
+
+  it("casa pelo nome completo ignorando estado, acentos e caixa", () => {
+    const m = matchUnitNames(["SC - Florianopolis - Jurerê", "PR - Curitiba - Agua Verde", "SC - Florianópolis - SC 401"],
+      ["Florianópolis - Jurerê", "Curitiba - Água Verde", "Florianópolis - SC 401"]);
+    expect(m.get("Florianópolis - Jurerê")).toEqual({ kind: "match", name: "SC - Florianopolis - Jurerê" });
+    expect(m.get("Curitiba - Água Verde")).toEqual({ kind: "match", name: "PR - Curitiba - Agua Verde" });
+    expect(m.get("Florianópolis - SC 401")).toEqual({ kind: "match", name: "SC - Florianópolis - SC 401" });
+  });
+
+  it("casa pela cidade quando o Publicador só tem a cidade e ela é única nos dois lados", () => {
+    const m = matchUnitNames(["MG - Nova Lima", "SC - Criciúma", "Franqueadora", "Teste"], ["Nova Lima - Vale do Sereno", "Criciúma - Michel"]);
+    expect(m.get("Nova Lima - Vale do Sereno")).toEqual({ kind: "match", name: "MG - Nova Lima" });
+    expect(m.get("Criciúma - Michel")).toEqual({ kind: "match", name: "SC - Criciúma" });
+  });
+
+  it("não casa bairros diferentes da mesma cidade nem cidade repetida", () => {
+    const m = matchUnitNames(["MG - Juiz de Fora - Braz", "SC - Joinville", "SC - Florianópolis - Centro"],
+      ["Juiz de Fora - São Mateus", "Joinville - América", "Joinville - Centro", "Florianópolis - Jurerê"]);
+    expect(m.get("Juiz de Fora - São Mateus")).toEqual({ kind: "none" });
+    expect(m.get("Joinville - América")).toEqual({ kind: "ambiguous" });
+    expect(m.get("Joinville - Centro")).toEqual({ kind: "ambiguous" });
+    expect(m.get("Florianópolis - Jurerê")).toEqual({ kind: "none" });
+  });
+
+  it("nomes completos duplicados no Publicador ficam ambíguos", () => {
+    const m = matchUnitNames(["SC - Itajaí - Centro", "SC - Itajai - Centro"], ["Itajaí - Centro"]);
+    expect(m.get("Itajaí - Centro")).toEqual({ kind: "ambiguous" });
   });
 });
