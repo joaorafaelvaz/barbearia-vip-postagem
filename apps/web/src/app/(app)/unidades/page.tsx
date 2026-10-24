@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PlatformBadge } from "@/components/Badges";
+import { ChatIdField } from "@/components/ChatIdField";
 import { DeleteUnitButton } from "@/components/DeleteUnitButton";
 import { DisconnectButton } from "@/components/DisconnectButton";
 import { IconAlert, IconCheck, IconFacebook, IconMapPin, IconStore, IconTikTok, IconYouTube } from "@/components/Icons";
@@ -24,6 +25,7 @@ export default async function UnitsPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const admin = isAdmin(s);
   const units = await listUnitsWithAccounts(prisma, s.organizationId, await allowedUnitIds(prisma, s));
+  const org = admin ? await prisma.organization.findUniqueOrThrow({ where: { id: s.organizationId }, select: { whatsappChatId: true } }) : null;
   const hasMeta = Boolean(process.env.META_APP_ID);
   const hasGoogle = Boolean(process.env.GOOGLE_CLIENT_ID);
   const hasTikTok = Boolean(process.env.TIKTOK_CLIENT_KEY);
@@ -46,6 +48,13 @@ export default async function UnitsPage({ searchParams }: { searchParams: Promis
       )}
 
       {admin ? <UnitForm /> : <div className="alert info"><IconAlert size="sm" /><span>Você vê as unidades delegadas a você. Só o administrador cadastra unidades.</span></div>}
+      {admin && org && (
+        <section className="card stack">
+          <h2 style={{ margin: 0 }}>Grupo WhatsApp da franqueadora</h2>
+          <p className="muted">Destino "Franqueadora" dos Avisos WhatsApp. Formato WAHA: id do grupo (<code>...@g.us</code>) ou número (<code>55DDDN@c.us</code>).</p>
+          <ChatIdField endpoint="/api/organization" value={org.whatsappChatId} label="Grupo da franqueadora" id="org-chat" />
+        </section>
+      )}
 
       {units.length === 0 ? (
         <div className="card"><div className="empty"><IconStore /><strong>{admin ? "Nenhuma unidade ainda" : "Nenhuma unidade delegada a você"}</strong><span>{admin ? "Cadastre a primeira unidade no formulário acima." : "Peça ao administrador para delegar unidades ao seu usuário."}</span></div></div>
@@ -66,6 +75,7 @@ export default async function UnitsPage({ searchParams }: { searchParams: Promis
                   {admin && <DeleteUnitButton id={u.id} name={u.name} />}
                 </div>
               </div>
+              {admin && <ChatIdField endpoint={`/api/units/${u.id}`} value={u.whatsappChatId} label="Grupo WhatsApp da unidade (Avisos)" id={`chat-${u.id}`} hint={u.whatsappChatId ? undefined : "Sem grupo, a unidade não recebe avisos."} />}
               {u.accounts.length === 0 ? (
                 <div className="alert warn"><IconAlert size="sm" /><span>Nenhuma conta conectada. Use os botões acima para vincular.</span></div>
               ) : (
