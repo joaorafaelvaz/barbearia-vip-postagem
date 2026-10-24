@@ -1,4 +1,7 @@
-import { NOTICE_TEXT_MAX, NOTICE_TIMEZONE, localToUtc, nextOccurrence, resolveNoticeTargets, sameRecurrence, type NoticeRecurrence, type NoticeState, type NoticeTargets, type NoticeUnitChat } from "@fsp/core";
+import type { WahaSenderLike } from "@fsp/connectors";
+import { NOTICE_TEXT_MAX, NOTICE_TIMEZONE, canTransition, localToUtc, nextOccurrence, resolveNoticeTargets, sameRecurrence, type NoticeRecurrence, type NoticeState, type NoticeTargets, type NoticeUnitChat } from "@fsp/core";
+import type { Prisma, PrismaClient } from "@fsp/db";
+import { dequeueNotice, enqueueNotice, type NoticeQueueLike } from "@fsp/queue";
 import { z } from "zod";
 import { HttpError } from "../api";
 
@@ -86,4 +89,106 @@ export function planUpdate(current: CurrentNotice, next: Pick<ParsedNotice, "fir
  */
 export function assertResolvableTargets(targets: NoticeTargets, units: readonly NoticeUnitChat[], franchisorChatId: string | null): void {
   if (resolveNoticeTargets(targets, units, franchisorChatId).length === 0) throw new HttpError(400, "Escolha ao menos um destino.");
+}
+
+/** Fila própria dos avisos (`whatsapp-notices`), nunca a `publish`. */
+export interface NoticeDeps { prisma: PrismaClient; queue: NoticeQueueLike }
+
+async function assertUnitsInOrg(prisma: PrismaClient, organizationId: string, unitIds: string[]) {
+  if (unitIds.length === 0) return;
+  const count = await prisma.unit.count({ where: { id: { in: unitIds }, organizationId } });
+  if (count !== unitIds.length) throw new HttpError(400, "Uma ou mais unidades não pertencem à sua rede.");
+}
+
+const noticeSelect = { id: true, text: true, targets: true, firstSendAt: true, recurrence: true, endAt: true, nextRunAt: true, state: true, consecutiveFailures: true, createdAt: true, updatedAt: true } as const;
+
+export async function listNotices(prisma: PrismaClient, organizationId: string) {
+  return prisma.whatsappNotice.findMany({ where: { organizationId, state: { in: ["ativo", "pausado", "enviando"] } }, orderBy: [{ nextRunAt: "asc" }], select: noticeSelect });
+}
+
+export async function listDeliveries(prisma: PrismaClient, organizationId: string, limit = 200) {
+  return prisma.whatsappDelivery.findMany({ where: { organizationId }, orderBy: { sentAt: "desc" }, take: limit, select: { id: true, occurrenceAt: true, sentAt: true, chatId: true, targetName: true, status: true, error: true, notice: { select: { id: true, text: true } } } });
+}
+
+/** Os chats de hoje (unidades + franqueadora) para validar que o destino resolve em >= 1 chat. */
+async function loadChats(prisma: PrismaClient, organizationId: string) {
+  const [units, org] = await Promise.all([
+    prisma.unit.findMany({ where: { organizationId }, select: { id: true, name: true, whatsappChatId: true } }),
+    prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { whatsappChatId: true } }),
+  ]);
+  return { units, franchisorChatId: org.whatsappChatId };
+}
+
+/** Campos Json do Prisma: `NoticeTargets`/`NoticeRecurrence` são aliases de objeto, atribuíveis a `InputJsonValue`. */
+const json = (v: NoticeTargets | NoticeRecurrence) => v as unknown as Prisma.InputJsonObject;
+
+export async function createNotice(deps: NoticeDeps, organizationId: string, userId: string, raw: unknown) {
+  const input = parseNoticeInput(raw);
+  await assertUnitsInOrg(deps.prisma, organizationId, input.targets.unidades);
+  const chats = await loadChats(deps.prisma, organizationId);
+  assertResolvableTargets(input.targets, chats.units, chats.franchisorChatId);
+  const nextRunAt = nextOccurrence(null, input.firstSendAt, input.recurrence, input.endAt);
+  const notice = await deps.prisma.whatsappNotice.create({
+    data: { organizationId, text: input.text, targets: json(input.targets), firstSendAt: input.firstSendAt, recurrence: json(input.recurrence), endAt: input.endAt, nextRunAt, state: nextRunAt ? "ativo" : "concluido", createdById: userId },
+    select: noticeSelect,
+  });
+  // Enfileira fora da transação: se falhar, a reconciliação (5 min) recupera pelo banco.
+  if (nextRunAt) await enqueueNotice(deps.queue, notice.id, nextRunAt, 0);
+  return notice;
+}
+
+export async function updateNotice(deps: NoticeDeps, organizationId: string, noticeId: string, raw: unknown) {
+  const current = await deps.prisma.whatsappNotice.findFirst({ where: { id: noticeId, organizationId } });
+  if (!current) throw new HttpError(404, "Aviso não encontrado.");
+  const input = parseNoticeInput(raw, new Date(), { previousFirstSendAt: current.firstSendAt });
+  await assertUnitsInOrg(deps.prisma, organizationId, input.targets.unidades);
+  const chats = await loadChats(deps.prisma, organizationId);
+  assertResolvableTargets(input.targets, chats.units, chats.franchisorChatId);
+  const plan = planUpdate({ state: current.state, firstSendAt: current.firstSendAt, recurrence: current.recurrence as unknown as NoticeRecurrence, nextRunAt: current.nextRunAt }, input);
+  // O estado é decidido no próprio UPDATE: se outra requisição pausou/retomou no meio, prevalece o banco.
+  const r = await deps.prisma.whatsappNotice.updateMany({
+    where: { id: noticeId, state: { in: ["ativo", "pausado"] } },
+    data: { text: input.text, targets: json(input.targets), firstSendAt: input.firstSendAt, recurrence: json(input.recurrence), endAt: input.endAt, nextRunAt: plan.nextRunAt, consecutiveFailures: 0, ...(plan.state === "concluido" ? { state: "concluido" as const } : {}) },
+  });
+  if (r.count === 0) throw new HttpError(409, "Este aviso mudou de estado; recarregue a página.");
+  if (current.nextRunAt) await dequeueNotice(deps.queue, noticeId, current.nextRunAt, current.consecutiveFailures).catch(() => false);
+  const updated = await deps.prisma.whatsappNotice.findUniqueOrThrow({ where: { id: noticeId }, select: noticeSelect });
+  if (updated.state === "ativo" && updated.nextRunAt) await enqueueNotice(deps.queue, noticeId, updated.nextRunAt, 0);
+  return updated;
+}
+
+/** Pausar / retomar / cancelar pela tela (lista branca da spec §5.3). */
+export async function changeNoticeState(deps: NoticeDeps, organizationId: string, noticeId: string, to: "ativo" | "pausado" | "cancelado") {
+  const current = await deps.prisma.whatsappNotice.findFirst({ where: { id: noticeId, organizationId } });
+  if (!current) throw new HttpError(404, "Aviso não encontrado.");
+  if (!canTransition(current.state, to)) throw new HttpError(409, `Não é possível mudar de ${current.state} para ${to}.`);
+  // Retomar zera o contador: senão um aviso pausado por 3 falhas pausa de novo na primeira falha
+  const r = await deps.prisma.whatsappNotice.updateMany({ where: { id: noticeId, state: current.state }, data: { state: to, ...(to === "ativo" ? { consecutiveFailures: 0 } : {}) } });
+  if (r.count === 0) throw new HttpError(409, "Este aviso mudou de estado; recarregue a página.");
+  if (current.nextRunAt) {
+    if (to === "ativo") await enqueueNotice(deps.queue, noticeId, current.nextRunAt, 0); // vencido? a regra das 2h decide no worker
+    else await dequeueNotice(deps.queue, noticeId, current.nextRunAt, current.consecutiveFailures).catch(() => false);
+  }
+}
+
+/** "Enviar teste para mim": imediato, só para o User.whatsappChatId do próprio usuário. */
+export async function sendTestNotice(prisma: PrismaClient, sender: WahaSenderLike | null, userId: string, raw: unknown) {
+  const { text } = z.object({ text: z.string().trim().min(1, "Escreva o texto antes de testar.").max(NOTICE_TEXT_MAX) }).parse(raw);
+  if (!sender) throw new HttpError(503, "Envio de WhatsApp não configurado (WAHA_URL).");
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { whatsappChatId: true } });
+  if (!user.whatsappChatId) throw new HttpError(400, "Cadastre seu número em Minha conta para receber o teste.");
+  const result = await sender.sendText(user.whatsappChatId, text);
+  if (!result.ok) throw new HttpError(502, `Falha ao enviar o teste (${result.error}).`);
+}
+
+/** Dados que a página /avisos precisa. */
+export async function noticePageData(prisma: PrismaClient, organizationId: string, userId: string) {
+  const [units, org, me, notices, deliveries] = await Promise.all([
+    prisma.unit.findMany({ where: { organizationId }, orderBy: { name: "asc" }, select: { id: true, name: true, whatsappChatId: true } }),
+    prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { whatsappChatId: true } }),
+    prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { whatsappChatId: true } }),
+    listNotices(prisma, organizationId),
+    listDeliveries(prisma, organizationId),
+  ]);
+  return { units, franchisorChatId: org.whatsappChatId, myChatId: me.whatsappChatId, notices, deliveries };
 }
