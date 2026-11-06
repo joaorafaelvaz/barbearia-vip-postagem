@@ -12,6 +12,7 @@ export * from "./facebook-stories.js";
 export * from "./instagram.js";
 export * from "./instagram-profile.js";
 export * from "./google-business.js";
+export * from "./google-performance.js";
 export * from "./oauth/meta.js";
 export * from "./oauth/google.js";
 export * from "./oauth/tiktok.js";

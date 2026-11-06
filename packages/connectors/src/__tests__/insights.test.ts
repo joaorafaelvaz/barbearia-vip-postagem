@@ -60,21 +60,11 @@ describe("insights", () => {
     expect(calls[2]?.url).toContain("metric=reach,views,saved&");
   });
 
-  it("Google: visualizações e cliques do localPost", async () => {
-    const { fetch, calls } = fakeFetch([
-      () => ({ json: { localPostMetrics: [{ metricValues: [
-        { metric: "LOCAL_POST_VIEWS_SEARCH", totalValue: { value: "230" } },
-        { metric: "LOCAL_POST_ACTIONS_CALL_TO_ACTION", totalValue: { value: "9" } },
-      ] }] } }),
-    ]);
+  it("Google: sem métricas por postagem (endpoint removido), parcial e sem chamada de rede", async () => {
+    const { fetch, calls } = fakeFetch([]);
     const m = await new GoogleBusinessInsights({ fetch }).fetch(account.gbp, "accounts/1/locations/2/localPosts/7");
-    expect(m).toMatchObject({ impressions: 230, reach: 230, clicks: 9, partial: false });
-    expect(calls[0]?.url).toContain("/accounts/1/locations/2/localPosts:reportInsights");
-  });
-
-  it("Google sem acesso à API de métricas: parcial, sem lançar erro", async () => {
-    const { fetch } = fakeFetch([() => ({ status: 403, json: { error: { message: "no access" } } })]);
-    const m = await new GoogleBusinessInsights({ fetch }).fetch(account.gbp, "accounts/1/locations/2/localPosts/7");
-    expect(m.partial).toBe(true);
+    expect(m).toMatchObject({ impressions: 0, clicks: 0, partial: true });
+    expect(m.note).toContain("não fornece métricas por postagem");
+    expect(calls).toHaveLength(0);
   });
 });

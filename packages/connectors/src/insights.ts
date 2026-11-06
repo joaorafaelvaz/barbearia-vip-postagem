@@ -1,6 +1,5 @@
 import { PublishError, type Platform } from "@fsp/core";
 import { GRAPH_BASE } from "./meta-config.js";
-import { GBP_POSTS_BASE } from "./google-business.js";
 import { TIKTOK_API } from "./oauth/tiktok.js";
 import { mapTikTokError } from "./tiktok.js";
 import { YOUTUBE_API } from "./youtube.js";
@@ -141,45 +140,21 @@ export class InstagramInsights implements InsightsFetcher {
   }
 }
 
-/** Google Business Profile: visualizações e cliques do post via localPosts:reportInsights (quando a API fornecer). */
+export const GBP_NO_POST_METRICS_NOTE = "O Google não fornece métricas por postagem (recurso encerrado em 2023); veja o desempenho do perfil no Analytics.";
+
+/**
+ * Google Business Profile: não há métricas por postagem. O Google encerrou as estatísticas de posts
+ * em 2023 e removeu `localPosts:reportInsights` da API; o que existe é o desempenho do perfil
+ * (Business Profile Performance API), coletado à parte por `GoogleBusinessPerformanceClient`.
+ * Sem chamada de rede: devolve "parcial" com a explicação.
+ */
 export class GoogleBusinessInsights implements InsightsFetcher {
   readonly platform = "GOOGLE_BUSINESS_PROFILE" as const;
-  private readonly http;
-  constructor(o: ConnectorOptions = {}) {
-    this.http = o.fetch ?? defaultFetch;
-  }
-  async fetch(account: AccountCredentials, postName: string): Promise<PostMetrics> {
+  constructor(_o: ConnectorOptions = {}) {}
+  async fetch(_account: AccountCredentials, _postName: string): Promise<PostMetrics> {
     const m = empty();
-    const end = new Date();
-    const start = new Date(end.getTime() - 30 * 86_400_000);
-    const res = await safeFetch(this.http, `${GBP_POSTS_BASE}/${account.externalId}/localPosts:reportInsights`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${account.accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        localPostNames: [postName],
-        basicRequest: {
-          metricRequests: [{ metric: "LOCAL_POST_VIEWS_SEARCH" }, { metric: "LOCAL_POST_ACTIONS_CALL_TO_ACTION" }],
-          timeRange: { startTime: start.toISOString(), endTime: end.toISOString() },
-        },
-      }),
-    });
-    const body = (await readJson(res)) as Record<string, unknown> | undefined;
-    if (!res.ok) {
-      const err = mapGoogleError(res.status, body, res.headers.get("retry-after"));
-      if (err.code === "PERMISSION_DENIED" || err.code === "VALIDATION" || res.status === 404) {
-        m.partial = true;
-        m.note = "O Google não disponibiliza métricas para esta postagem.";
-        return m;
-      }
-      throw err;
-    }
-    type Row = { metricValues?: Array<{ metric?: string; totalValue?: { value?: unknown } }> };
-    const rows = (body?.localPostMetrics as Row[] | undefined) ?? [];
-    for (const mv of rows[0]?.metricValues ?? []) {
-      if (mv.metric === "LOCAL_POST_VIEWS_SEARCH") m.impressions = num(mv.totalValue?.value);
-      if (mv.metric === "LOCAL_POST_ACTIONS_CALL_TO_ACTION") m.clicks = num(mv.totalValue?.value);
-    }
-    m.reach = m.impressions;
+    m.partial = true;
+    m.note = GBP_NO_POST_METRICS_NOTE;
     return m;
   }
 }

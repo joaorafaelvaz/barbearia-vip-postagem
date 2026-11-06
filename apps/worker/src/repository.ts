@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@fsp/db";
 import type { MediaKind, NoticeRecurrence, NoticeTargets, Platform, PostFormat } from "@fsp/core";
-import type { PostMetrics } from "@fsp/connectors";
+import type { PostMetrics, ProfileDailyPoint } from "@fsp/connectors";
+import type { ProfileAccount, ProfileMetricsRepository } from "./profile-metrics.js";
 import type { TargetRecord, TargetRepository } from "./processor.js";
 import type { ExternalPostSummary } from "@fsp/connectors";
 import type { ImportAccount, ImportRepository } from "./imports.js";
@@ -81,6 +82,35 @@ export function prismaTargetRepository(prisma: PrismaClient): TargetRepository {
 
     async updateAccountToken(accountId, accessTokenEnc, expiresAt, refreshTokenEnc) {
       await prisma.connectedAccount.update({ where: { id: accountId }, data: { accessTokenEnc, tokenExpiresAt: expiresAt, ...(refreshTokenEnc ? { refreshTokenEnc } : {}) } });
+    },
+  };
+}
+
+/** Implementação Prisma do desempenho do perfil no Google Meu Negócio. */
+export function prismaProfileMetricsRepository(prisma: PrismaClient): ProfileMetricsRepository {
+  return {
+    async listGoogleAccounts(filter): Promise<ProfileAccount[]> {
+      const rows = await prisma.connectedAccount.findMany({
+        where: { isActive: true, platform: "GOOGLE_BUSINESS_PROFILE", ...(filter.organizationId ? { organizationId: filter.organizationId } : {}) },
+        select: { id: true, organizationId: true, platform: true, externalId: true, accessTokenEnc: true, refreshTokenEnc: true, tokenExpiresAt: true },
+      });
+      return rows.map((a) => ({ ...a, platform: a.platform as Platform }));
+    },
+    async savePoints(account, points: ProfileDailyPoint[], fetchedAt) {
+      await prisma.$transaction([
+        ...points.map(({ date, ...values }) => {
+          const day = new Date(`${date}T00:00:00.000Z`);
+          return prisma.profileDailyMetric.upsert({
+            where: { connectedAccountId_date: { connectedAccountId: account.id, date: day } },
+            create: { connectedAccountId: account.id, date: day, ...values, fetchedAt },
+            update: { ...values, fetchedAt },
+          });
+        }),
+        prisma.connectedAccount.update({ where: { id: account.id }, data: { profileMetricsAt: fetchedAt, profileMetricsError: null } }),
+      ]);
+    },
+    async saveError(account, error, fetchedAt) {
+      await prisma.connectedAccount.update({ where: { id: account.id }, data: { profileMetricsAt: fetchedAt, profileMetricsError: error } });
     },
   };
 }

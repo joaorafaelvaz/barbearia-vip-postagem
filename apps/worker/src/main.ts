@@ -2,7 +2,7 @@ import { config as loadEnv } from "dotenv";
 import path from "node:path";
 loadEnv({ path: path.resolve(process.cwd(), "../../.env") });
 loadEnv();
-import { WahaClient, createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken, refreshTikTokToken, type ConnectorOptions } from "@fsp/connectors";
+import { GoogleBusinessPerformanceClient, WahaClient, createInsightsFetcher, createPostLister, createPublisher, refreshGoogleAccessToken, refreshTikTokToken, type ConnectorOptions } from "@fsp/connectors";
 import { CLEANUP_JOB_NAME, DEFAULT_MEDIA_RETENTION_DAYS, IMPORT_JOB_NAME, METRICS_JOB_NAME, PREPARE_MEDIA_JOB_NAME, PUBLISH_QUEUE_NAME, RECONCILE_JOB_NAME, TokenCipher, WHATSAPP_NOTICES_QUEUE_NAME, type ImportJobData, type MetricsJobData, type PrepareMediaJobData, type PublishJobData, type WhatsappNoticeJobData } from "@fsp/core";
 import { getPrisma } from "@fsp/db";
 import { createNoticeQueue, createPublishQueue, createRedisConnection, ensureCleanupScheduler, ensureImportScheduler, ensureMetricsScheduler, ensureReconcileScheduler, requeuePublish, type AppJobData } from "@fsp/queue";
@@ -10,9 +10,10 @@ import { Worker } from "bullmq";
 import { cleanupMedia } from "./cleanup.js";
 import { importPosts } from "./imports.js";
 import { collectMetrics } from "./metrics.js";
+import { collectProfileMetrics } from "./profile-metrics.js";
 import { reconcileTargets } from "./reconcile.js";
 import { processTarget, resolveAccessToken, type ProcessorDeps } from "./processor.js";
-import { prismaCleanupRepository, prismaImportRepository, prismaMetricsRepository, prismaNoticeRepository, prismaReconcileRepository, prismaSegmentRepository, prismaTargetRepository } from "./repository.js";
+import { prismaCleanupRepository, prismaImportRepository, prismaMetricsRepository, prismaNoticeRepository, prismaProfileMetricsRepository, prismaReconcileRepository, prismaSegmentRepository, prismaTargetRepository } from "./repository.js";
 import { processNotice, reconcileNotices } from "./whatsapp-notices.js";
 import { ensureNormalized, type NormalizeDeps } from "./normalize.js";
 import { ffmpegTranscoder, ffprobeProber } from "./normalize-ffmpeg.js";
@@ -76,6 +77,8 @@ async function main(): Promise<void> {
   };
 
   const metricsRepo = prismaMetricsRepository(prisma);
+  const profileMetricsRepo = prismaProfileMetricsRepository(prisma);
+  const gbpPerformance = new GoogleBusinessPerformanceClient();
   const importRepo = prismaImportRepository(prisma);
   const reconcileRepo = prismaReconcileRepository(prisma);
   const noticeRepo = prismaNoticeRepository(prisma);
@@ -124,7 +127,7 @@ async function main(): Promise<void> {
       }
       if (job.name === METRICS_JOB_NAME) {
         const data = job.data as MetricsJobData;
-        return collectMetrics(
+        const posts = await collectMetrics(
           {
             repo: metricsRepo,
             fetcherFor: (platform) => createInsightsFetcher(platform),
@@ -137,6 +140,21 @@ async function main(): Promise<void> {
           },
           data.organizationId,
         );
+        // Google Meu Negócio: não há métricas por postagem; o que existe é o desempenho do perfil.
+        const profile = await collectProfileMetrics(
+          {
+            repo: profileMetricsRepo,
+            fetchDaily: (creds, from, to) => gbpPerformance.fetchDaily(creds, from, to),
+            credentials: async (a) => ({
+              platform: a.platform,
+              externalId: a.externalId,
+              accessToken: await resolveAccessToken(deps, { account: { ...a, isActive: true } }, new Date()),
+            }),
+            log: deps.log,
+          },
+          data.organizationId,
+        );
+        return { posts, profile };
       }
       const outcome = await processTarget(deps, (job.data as PublishJobData).postTargetId);
       if (outcome.outcome === "retry") {

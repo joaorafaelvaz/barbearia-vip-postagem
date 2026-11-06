@@ -19,6 +19,53 @@ export interface AnalyticsData {
   byPlatform: Array<{ platform: string; published: number; failed: number } & Engagement>;
   topPosts: Array<{ targetId: string; postId: string | null; source: "system" | "external"; caption: string; unit: string; platform: string; externalUrl: string | null; publishedAt: Date | null; score: number } & Engagement>;
   failures: Array<{ code: string; label: string; count: number }>;
+  /** Desempenho do perfil no Google Meu Negócio; null quando o filtro de plataforma exclui o Google. */
+  profile: ProfileAnalytics | null;
+}
+
+export interface ProfileTotals { impressionsSearch: number; impressionsMaps: number; websiteClicks: number; callClicks: number; directionRequests: number; messagingClicks: number; bookings: number }
+
+export interface ProfileAnalytics {
+  accounts: number;
+  totals: ProfileTotals;
+  byUnit: Array<{ accountId: string; unit: string; account: string; days: number } & ProfileTotals>;
+  errors: Array<{ accountId: string; unit: string; account: string; message: string }>;
+  lastFetchedAt: Date | null;
+  /** último dia com dados (dd/mm/aaaa) */
+  lastDay: string | null;
+}
+
+const zeroProfile = (): ProfileTotals => ({ impressionsSearch: 0, impressionsMaps: 0, websiteClicks: 0, callClicks: 0, directionRequests: 0, messagingClicks: 0, bookings: 0 });
+const PROFILE_KEYS: Array<keyof ProfileTotals> = ["impressionsSearch", "impressionsMaps", "websiteClicks", "callClicks", "directionRequests", "messagingClicks", "bookings"];
+
+/** Soma o desempenho diário dos perfis do Google no período (dias do calendário do Google, em UTC). */
+async function getProfileAnalytics(prisma: PrismaClient, organizationId: string, allowed: string[] | null, f: AnalyticsFilters, from: Date): Promise<ProfileAnalytics | null> {
+  if (f.platform && f.platform !== "GOOGLE_BUSINESS_PROFILE") return null;
+  const fromDay = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+  const accounts = await prisma.connectedAccount.findMany({
+    where: { organizationId, platform: "GOOGLE_BUSINESS_PROFILE", isActive: true, ...(f.unitId ? { unitId: f.unitId } : allowed ? { unitId: { in: allowed } } : {}) },
+    select: {
+      id: true, displayName: true, profileMetricsAt: true, profileMetricsError: true,
+      unit: { select: { name: true } },
+      profileMetrics: { where: { date: { gte: fromDay } }, select: { date: true, impressionsSearch: true, impressionsMaps: true, websiteClicks: true, callClicks: true, directionRequests: true, messagingClicks: true, bookings: true } },
+    },
+    orderBy: [{ unit: { name: "asc" } }, { displayName: "asc" }],
+  });
+  const out: ProfileAnalytics = { accounts: accounts.length, totals: zeroProfile(), byUnit: [], errors: [], lastFetchedAt: null, lastDay: null };
+  let lastDay: Date | null = null;
+  for (const a of accounts) {
+    const row = { accountId: a.id, unit: a.unit.name, account: a.displayName, days: a.profileMetrics.length, ...zeroProfile() };
+    for (const d of a.profileMetrics) {
+      for (const k of PROFILE_KEYS) { row[k] += d[k]; out.totals[k] += d[k]; }
+      if (!lastDay || d.date > lastDay) lastDay = d.date;
+    }
+    out.byUnit.push(row);
+    if (a.profileMetricsError) out.errors.push({ accountId: a.id, unit: a.unit.name, account: a.displayName, message: a.profileMetricsError });
+    if (a.profileMetricsAt && (!out.lastFetchedAt || a.profileMetricsAt > out.lastFetchedAt)) out.lastFetchedAt = a.profileMetricsAt;
+  }
+  if (lastDay) out.lastDay = `${String(lastDay.getUTCDate()).padStart(2, "0")}/${String(lastDay.getUTCMonth() + 1).padStart(2, "0")}/${lastDay.getUTCFullYear()}`;
+  out.byUnit.sort((x, y) => y.impressionsSearch + y.impressionsMaps - (x.impressionsSearch + x.impressionsMaps));
+  return out;
 }
 
 const zero = (): Engagement => ({ likes: 0, comments: 0, shares: 0, reach: 0, impressions: 0, saves: 0, clicks: 0 });
@@ -55,7 +102,8 @@ export async function getAnalytics(prisma: PrismaClient, organizationId: string,
       seriesItems.push({ at: t.publishedAt ?? t.scheduledAt, ok: true, timeZone: t.account.unit.timezone });
       if (t.metrics) {
         coverage.withMetrics++;
-        if (t.metrics.partial) coverage.partial++;
+        // Google não tem métricas por postagem: não é "parcial" por falta de permissão.
+        if (t.metrics.partial && t.account.platform !== "GOOGLE_BUSINESS_PROFILE") coverage.partial++;
         if (!coverage.lastFetchedAt || t.metrics.fetchedAt > coverage.lastFetchedAt) coverage.lastFetchedAt = t.metrics.fetchedAt;
         const m = { likes: t.metrics.likes, comments: t.metrics.comments, shares: t.metrics.shares, reach: t.metrics.reach, impressions: t.metrics.impressions, saves: t.metrics.saves, clicks: t.metrics.clicks };
         add(engagement, m); add(u, m); add(p, m);
@@ -84,7 +132,7 @@ export async function getAnalytics(prisma: PrismaClient, organizationId: string,
     const m = { likes: x.likes, comments: x.comments, shares: x.shares, reach: x.reach, impressions: x.impressions, saves: x.saves, clicks: x.clicks };
     add(engagement, m); add(u, m); add(p, m);
     coverage.withMetrics++;
-    if (x.partial) coverage.partial++;
+    if (x.partial && x.account.platform !== "GOOGLE_BUSINESS_PROFILE") coverage.partial++;
     if (x.metricsFetchedAt && (!coverage.lastFetchedAt || x.metricsFetchedAt > coverage.lastFetchedAt)) coverage.lastFetchedAt = x.metricsFetchedAt;
     top.push({ targetId: x.id, postId: null, source: "external", caption: x.caption, unit: x.account.unit.name, platform: x.account.platform, externalUrl: x.permalink, publishedAt: x.publishedAt, score: engagementScore(m), ...m });
     units.set(u.unitId, u);
@@ -102,5 +150,6 @@ export async function getAnalytics(prisma: PrismaClient, organizationId: string,
     byPlatform: [...platforms.values()].sort((a, b) => b.published - a.published),
     topPosts: top.sort((a, b) => b.score - a.score).slice(0, 10),
     failures: [...failures.entries()].map(([code, count]) => ({ code, label: ERROR_LABELS[code] ?? code, count })).sort((a, b) => b.count - a.count),
+    profile: await getProfileAnalytics(prisma, organizationId, allowed, f, from),
   };
 }

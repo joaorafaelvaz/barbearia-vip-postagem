@@ -106,6 +106,9 @@ model ConnectedAccount {
   /// Meta: token de usuário de longa duração (60 dias), exigido por operações como excluir mídia do Instagram
   userTokenEnc   String?
   isActive       Boolean  @default(true)
+  /// Google: última coleta do desempenho do perfil e o erro dela (null = ok)
+  profileMetricsAt    DateTime?
+  profileMetricsError String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -113,6 +116,7 @@ model ConnectedAccount {
   unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   targets      PostTarget[]
   externalPosts ExternalPost[]
+  profileMetrics ProfileDailyMetric[]
 
   @@unique([organizationId, platform, externalId])
   @@index([unitId])
@@ -280,6 +284,26 @@ model ExternalPost {
 
   @@unique([connectedAccountId, externalId])
   @@index([organizationId, publishedAt])
+}
+
+/// Desempenho diário do perfil no Google Meu Negócio (Business Profile Performance API).
+/// O Google não fornece métricas por postagem; estas são do perfil inteiro, por dia do calendário.
+model ProfileDailyMetric {
+  connectedAccountId String
+  date               DateTime @db.Date
+  impressionsSearch  Int      @default(0)
+  impressionsMaps    Int      @default(0)
+  websiteClicks      Int      @default(0)
+  callClicks         Int      @default(0)
+  directionRequests  Int      @default(0)
+  messagingClicks    Int      @default(0)
+  bookings           Int      @default(0)
+  fetchedAt          DateTime @default(now())
+
+  account ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@id([connectedAccountId, date])
+  @@index([date])
 }
 
 enum WhatsappNoticeState {

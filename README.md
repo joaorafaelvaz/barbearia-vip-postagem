@@ -92,8 +92,9 @@ pnpm --filter @fsp/web test:e2e    # Playwright (precisa de Postgres + Redis rod
 ### Google Business Profile
 
 1. Crie um projeto em <https://console.cloud.google.com>, habilite as APIs
-   **My Business Account Management**, **My Business Business Information** e
-   **Google My Business API (v4, para posts)**.
+   **My Business Account Management**, **My Business Business Information**,
+   **Google My Business API (v4, para posts)** e **Business Profile Performance API**
+   (desempenho do perfil no Analytics).
 2. **Solicite acesso à API** pelo formulário oficial da Business Profile API. Sem a aprovação,
    as chamadas retornam erro de cota/permissão.
 3. Crie credenciais OAuth 2.0 (aplicativo web) com redirect
@@ -280,9 +281,19 @@ O engajamento é coletado pelo worker a cada 6 horas para publicações dos últ
 por minuto por organização). Curtidas e comentários vêm com as permissões básicas; alcance,
 impressões e salvamentos exigem `read_insights` (Facebook) e `instagram_manage_insights`
 (Instagram), já incluídos no OAuth: contas conectadas antes dessa versão precisam ser
-reconectadas para liberar essas métricas. No Google Business Profile, as métricas de post
-dependem da API `localPosts:reportInsights`; quando ela não responde, a publicação fica marcada
-como parcial sem interromper a coleta.
+reconectadas para liberar essas métricas.
+
+### Google Meu Negócio: desempenho do perfil
+
+O Google **não fornece métricas por postagem** (encerrou as estatísticas de posts em 2023 e
+removeu `localPosts:reportInsights` da API). As publicações no Google aparecem no Analytics
+com engajamento zerado. O que o Google fornece é o desempenho do perfil inteiro, pela
+**Business Profile Performance API**: impressões na Busca e no Maps, cliques no site, ligações,
+pedidos de rota, mensagens e reservas, por dia. A mesma coleta de métricas (6 h e botão
+"Atualizar métricas") busca os últimos 90 dias de cada perfil conectado (tabela
+`ProfileDailyMetric`) e o Analytics mostra a seção "Perfil no Google Meu Negócio" somada no
+período e por unidade. Os dados do Google chegam com alguns dias de atraso. Se a API não
+estiver habilitada no projeto do Google Cloud, a seção mostra o erro da coleta com a instrução.
 
 ### Importação do histórico
 

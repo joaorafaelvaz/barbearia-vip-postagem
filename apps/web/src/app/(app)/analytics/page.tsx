@@ -3,6 +3,7 @@ import { FailuresTable, RankingTables, TopPostsTable } from "@/components/Analyt
 import { DailyBarChart } from "@/components/BarChart";
 import { IconAlert, IconCheck, IconClock, IconInfo } from "@/components/Icons";
 import { AnalyticsActions } from "@/components/AnalyticsActions";
+import { ProfilePerformance } from "@/components/ProfilePerformance";
 import { formatCompact } from "@/lib/analytics-utils";
 import { allowedUnitIds } from "@/lib/authz";
 import { prisma } from "@/lib/db";
@@ -89,6 +90,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         )}
       </section>
 
+      <ProfilePerformance data={data} tz={tz} />
       <RankingTables data={data} />
       <TopPostsTable data={data} tz={tz} />
       <FailuresTable data={data} />

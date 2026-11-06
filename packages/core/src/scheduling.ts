@@ -40,6 +40,8 @@ export const METRICS_SCHEDULER_ID = "collect-metrics-every-6h";
 export const METRICS_EVERY_MS = 6 * 60 * 60_000;
 /** Janela: publicações dos últimos N dias têm métricas atualizadas. */
 export const METRICS_WINDOW_DAYS = 30;
+/** Desempenho do perfil (Google Meu Negócio): dias para trás recoletados a cada rodada (cobre o período máximo do Analytics). */
+export const PROFILE_METRICS_WINDOW_DAYS = 90;
 
 export interface MetricsJobData {
   /** organização específica (atualização manual) ou undefined para todas */

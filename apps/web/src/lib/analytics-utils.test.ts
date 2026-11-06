@@ -36,7 +36,7 @@ describe("getAnalytics agrega importadas por unidade sem corromper o agrupamento
     const { getAnalytics } = await import("./services/analytics");
     const unit = { id: "u1", name: "Centro", timezone: "America/Sao_Paulo" };
     const ext = (id: string, likes: number) => ({ id, platform: "INSTAGRAM", caption: id, likes, comments: 1, shares: 0, reach: 0, impressions: 0, saves: 0, clicks: 0, partial: true, permalink: null, metricsFetchedAt: null, publishedAt: new Date(), account: { platform: "INSTAGRAM", unit } });
-    const prisma = { postTarget: { findMany: async () => [] }, externalPost: { findMany: async () => [ext("a", 10), ext("b", 20), ext("c", 30)] } } as never;
+    const prisma = { postTarget: { findMany: async () => [] }, externalPost: { findMany: async () => [ext("a", 10), ext("b", 20), ext("c", 30)] }, connectedAccount: { findMany: async () => [] } } as never;
     const d = await getAnalytics(prisma, "org", null, { days: 30 });
     expect(d.totals.imported).toBe(3);
     expect(d.totals.successRate).toBe(100);
@@ -44,5 +44,33 @@ describe("getAnalytics agrega importadas por unidade sem corromper o agrupamento
     expect(d.byUnit[0]).toMatchObject({ name: "Centro", published: 3, failed: 0, likes: 60, comments: 3 });
     expect(d.byPlatform[0]).toMatchObject({ platform: "INSTAGRAM", published: 3, likes: 60 });
     expect(d.engagement.likes).toBe(60);
+    expect(d.profile).toMatchObject({ accounts: 0 });
+  });
+});
+
+describe("getAnalytics: desempenho do perfil no Google Meu Negócio", () => {
+  const day = (iso: string, impressionsSearch: number, callClicks = 0) => ({ date: new Date(iso), impressionsSearch, impressionsMaps: 1, websiteClicks: 0, callClicks, directionRequests: 0, messagingClicks: 0, bookings: 0 });
+  const accounts = [
+    { id: "g1", displayName: "Barbearia Centro", profileMetricsAt: new Date("2026-11-06T10:00:00Z"), profileMetricsError: null, unit: { name: "Centro" }, profileMetrics: [day("2026-11-01T00:00:00Z", 100, 2), day("2026-11-02T00:00:00Z", 50)] },
+    { id: "g2", displayName: "Barbearia Norte", profileMetricsAt: new Date("2026-11-06T10:00:00Z"), profileMetricsError: "[PERMISSION_DENIED] Business Profile Performance API has not been used in project 1", unit: { name: "Norte" }, profileMetrics: [] },
+  ];
+  const prisma = { postTarget: { findMany: async () => [] }, externalPost: { findMany: async () => [] }, connectedAccount: { findMany: async () => accounts } } as never;
+
+  it("soma por unidade e no total, lista erros e o último dia com dados", async () => {
+    const { getAnalytics } = await import("./services/analytics");
+    const d = await getAnalytics(prisma, "org", null, { days: 30 });
+    expect(d.profile?.accounts).toBe(2);
+    expect(d.profile?.totals).toMatchObject({ impressionsSearch: 150, impressionsMaps: 2, callClicks: 2 });
+    expect(d.profile?.byUnit[0]).toMatchObject({ unit: "Centro", account: "Barbearia Centro", days: 2, impressionsSearch: 150 });
+    expect(d.profile?.byUnit[1]).toMatchObject({ unit: "Norte", days: 0, impressionsSearch: 0 });
+    expect(d.profile?.errors).toEqual([{ accountId: "g2", unit: "Norte", account: "Barbearia Norte", message: expect.stringContaining("Performance API") }]);
+    expect(d.profile?.lastDay).toBe("02/11/2026");
+    expect(d.profile?.lastFetchedAt?.toISOString()).toBe("2026-11-06T10:00:00.000Z");
+  });
+
+  it("filtro de outra plataforma oculta a seção", async () => {
+    const { getAnalytics } = await import("./services/analytics");
+    const d = await getAnalytics(prisma, "org", null, { days: 30, platform: "INSTAGRAM" });
+    expect(d.profile).toBeNull();
   });
 });
